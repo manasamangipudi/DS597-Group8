@@ -1,0 +1,89 @@
+---
+title: "Final Project"
+author: "Vijay Koduri"
+date: "2025-05-05"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+## 
+
+```{r}
+library(tidyverse)
+
+
+
+```
+
+Get the dataset into a tibble then check for duplicated rows and look at the distribution of all columns.
+
+```{r}
+
+co2_data <- read_csv("https://raw.githubusercontent.com/owid/co2-data/master/owid-co2-data.csv")
+
+
+
+sum(duplicated(co2_data))
+summary(co2_data)
+
+
+```
+
+There are no duplicates which is good but there are many columns with thousands of na's. The table is too big to use by itself so its better to make a smaller table with only the relevant info to the plot we want then deal with the missing values.
+
+```{r}
+#get only the continents then drop na
+continent_data <- co2_data %>%
+  filter(country %in% c("Africa", "Asia", "Europe", "North America", "Oceania", "South America")) %>%
+  select(country, year, co2,)
+
+summary(continent_data)
+continent_data = continent_data %>% drop_na(co2)
+```
+
+```{r}
+ggplot(continent_data,aes(x=year,y=co2,color = country))+
+  geom_line(size=1)+
+  labs(title = "CO2 Emisions by Year for all Continents",y="CO2 (Million Tonnes)")+
+  theme_minimal()
+```
+
+co2 by country income levels
+
+```{r}
+income_co2 = co2_data %>% filter(country %in% c("High-income countries","Low-income countries","Lower-middle-income countries","Upper-middle-income countries")) %>% 
+  select(country,year,co2) %>% drop_na(co2)
+
+ggplot(income_co2,aes(x=year,y=co2,color = country))+
+  geom_line(size=1)+
+  labs(title = "CO2 Emisions by Year for different Income Levels",
+       y="CO₂ Emissions (Mt)",
+       x="Year")+
+  theme_minimal()
+```
+
+```{r}
+co2_change <- co2_data %>%
+  filter(year %in% c(2015, 2023)) %>%
+  select(country, year, co2,iso_code) %>%
+  pivot_wider(names_from = year, values_from = co2, names_prefix = "co2_") %>%
+  mutate(co2_diff_2015_2023 = co2_2023 - co2_2015)
+
+
+co2_change %>%
+  drop_na(co2_diff_2015_2023,iso_code) %>%
+  arrange(co2_diff_2015_2023) %>%
+  slice(1:15) %>%
+  ggplot(aes(x = reorder(country, co2_diff_2015_2023,decreasing = TRUE), y = co2_diff_2015_2023)) +
+  geom_col(fill = "steelblue") +
+  coord_flip() +
+  labs(
+    title = "Countries with Most Decrease in CO₂ Emissions (2015–2023)",
+    x = "Country",
+    y = "Change in CO₂ Emissions (Mt)"
+  ) +
+  theme_minimal()
+```
