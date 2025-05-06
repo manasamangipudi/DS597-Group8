@@ -131,12 +131,6 @@ write_csv(energy_transformed, "/Users/manasamangipudi/Desktop/Semester-3/DataWra
 # Optional: View NA % per column (quality check)
 print(na_percentage(energy_transformed))
 
-print(na_percentage(energy_clean))
-
-
-```
-```{r}
-energy_transformed
 ```
 
 ```{r}
@@ -169,18 +163,40 @@ energy_transformed %>%
 
 ```{r}
 
+drop_outliers_thresh <- function(df, max_outliers = 2) {
+  numeric_cols <- df %>% select(where(is.numeric)) %>% colnames()
+  
+  outlier_matrix <- map_dfc(numeric_cols, function(col) {
+    Q1 <- quantile(df[[col]], 0.25, na.rm = TRUE)
+    Q3 <- quantile(df[[col]], 0.75, na.rm = TRUE)
+    IQR <- Q3 - Q1
+    lower <- Q1 - 1.5 * IQR
+    upper <- Q3 + 1.5 * IQR
+    tibble(!!col := df[[col]] < lower | df[[col]] > upper)
+  })
+  
+  # Count number of outlier flags per row
+  row_outlier_counts <- outlier_matrix %>% rowSums(na.rm = TRUE)
+  
+  # Keep rows with <= max_outliers
+  df[row_outlier_counts <= max_outliers, ]
+}
+
+# Drop only if more than 2 outlier columns
+energy_transformed_clean <- drop_outliers_thresh(energy_transformed, max_outliers = 9)
+
+cat("Original:", nrow(energy_transformed), "→ After smarter outlier removal:", nrow(energy_transformed_clean), "\n")
 
 ```
 ```{r}
 
-
-
+energy_transformed %>% filter(duplicated(.))
 ```
 
 
 ```{r}
  
-
+energy_transformed <- read_csv("/Users/manasamangipudi/Desktop/Semester-3/DataWrangling/Project/data/cleaned/energy_transformed_new.csv")
 co2_transformed <- read_csv("/Users/manasamangipudi/Desktop/Semester-3/DataWrangling/Project/data/cleaned/co2_transformed.csv")
 
 # # Check for overlapping years
@@ -201,7 +217,34 @@ write_csv(energy_co2_merged, "/Users/manasamangipudi/Desktop/Semester-3/DataWran
 
 ```
 
+```{r}
+drop_outliers_thresh <- function(df, max_outliers = 9) {
+  numeric_cols <- df %>% select(where(is.numeric)) %>% colnames()
+  outlier_matrix <- map_dfc(numeric_cols, function(col) {
+    Q1 <- quantile(df[[col]], 0.25, na.rm = TRUE)
+    Q3 <- quantile(df[[col]], 0.75, na.rm = TRUE)
+    IQR <- Q3 - Q1
+    lower <- Q1 - 2 * IQR
+    upper <- Q3 + 2 * IQR
+    tibble(!!col := df[[col]] < lower | df[[col]] > upper)
+  })
+  row_outlier_counts <- outlier_matrix %>% rowSums(na.rm = TRUE)
+  df[row_outlier_counts <= max_outliers, ]
+}
+
+energy_co2_merged <- drop_outliers_thresh(energy_co2_merged, max_outliers = 20)
+
+```
+
 
 ```{r}
-na_percentage(energy_co2_merged)
+ene
+
+```
+
+
+```{r}
+
+energy_co2_merged
+
 ```
