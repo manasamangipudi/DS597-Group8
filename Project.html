@@ -1654,30 +1654,203 @@ library(janitor)</code></pre>
 <pre class="r"><code>library(ggplot2)
 library(corrplot)</code></pre>
 <pre><code>## corrplot 0.95 loaded</code></pre>
-<pre class="r"><code>library(broom)</code></pre>
-<pre class="r"><code>energy_transformed &lt;- read_csv(&quot;/Users/manasamangipudi/Desktop/Semester-3/DataWrangling/Project/data/cleaned/energy_transformed_new.csv&quot;)</code></pre>
-<pre><code>## Rows: 3795 Columns: 31
+<pre class="r"><code>library(broom)
+library(countrycode)</code></pre>
+<pre class="r"><code>load_energy_data &lt;- function(url = &quot;https://raw.githubusercontent.com/owid/energy-data/master/owid-energy-data.csv&quot;) {
+  read_csv(url)
+}
+
+filter_energy_data &lt;- function(df) {
+  df %&gt;%
+    filter(!str_starts(iso_code, &quot;OWID&quot;), !is.na(country), !is.na(year)) %&gt;%
+    filter(year &gt;= 2000) %&gt;%
+    select(where(~ sum(is.na(.)) &lt; 0.4 * nrow(df))) %&gt;%
+    filter(!is.na(population), !is.na(gdp))
+}
+
+select_energy_columns &lt;- function(df) {
+  df %&gt;%
+    select(
+      country, iso_code, year, population, gdp,
+      electricity_generation,
+      renewables_electricity, fossil_electricity,
+      solar_electricity, wind_electricity, hydro_electricity,
+      renewables_share_elec, coal_share_elec, gas_share_elec, oil_share_elec
+    )
+}
+
+add_normalized_metrics &lt;- function(df) {
+  df %&gt;%
+    mutate(
+      electricity_per_capita = electricity_generation / population,
+      renewables_per_capita = renewables_electricity / population,
+      fossil_per_capita = fossil_electricity / population,
+      electricity_per_gdp = electricity_generation / gdp,
+      gdp_per_electricity = gdp / (electricity_generation + 1)
+    )
+}
+
+add_log_transforms &lt;- function(df) {
+  df %&gt;%
+    mutate(
+      log_gdp = log(gdp + 1),
+      log_population = log(population + 1),
+      log_electricity = log(electricity_generation + 1)
+    )
+}
+
+na_percentage &lt;- function(df) {
+  sapply(df, function(col) round(mean(is.na(col)) * 100, 2))
+}
+
+add_energy_ratios &lt;- function(df) {
+  df %&gt;%
+    mutate(
+      fossil_to_renewable_ratio = fossil_electricity / (renewables_electricity + 1),
+      fossil_share_elec = fossil_electricity / (electricity_generation + 1),
+      solar_share = solar_electricity / (renewables_electricity + 1),
+      wind_share = wind_electricity / (renewables_electricity + 1),
+      hydro_share = hydro_electricity / (renewables_electricity + 1)
+    )
+}
+
+add_classification_flags &lt;- function(df) {
+  df %&gt;%
+    mutate(
+      high_renewable = if_else(renewables_share_elec &gt; 50, 1, 0),
+      transitioning = if_else(renewables_share_elec &gt; fossil_share_elec, 1, 0)
+    )
+}
+
+transform_energy_data &lt;- function(df) {
+  df %&gt;%
+    add_normalized_metrics() %&gt;%
+    add_log_transforms() %&gt;%
+    add_energy_ratios() %&gt;%
+    add_classification_flags()
+}</code></pre>
+<pre class="r"><code># Load and process
+energy_raw &lt;- load_energy_data()</code></pre>
+<pre><code>## Rows: 21812 Columns: 130
 ## ── Column specification ────────────────────────────────────────────────────────
 ## Delimiter: &quot;,&quot;
-## chr  (3): country, iso_code, continent
-## dbl (28): year, population, gdp, electricity_generation, renewables_electric...
+## chr   (2): country, iso_code
+## dbl (128): year, population, gdp, biofuel_cons_change_pct, biofuel_cons_chan...
 ## 
 ## ℹ Use `spec()` to retrieve the full column specification for this data.
 ## ℹ Specify the column types or set `show_col_types = FALSE` to quiet this message.</code></pre>
-<pre class="r"><code>co2_transformed &lt;- read_csv(&quot;/Users/manasamangipudi/Desktop/Semester-3/DataWrangling/Project/data/cleaned/co2_transformed.csv&quot;)</code></pre>
-<pre><code>## Rows: 3772 Columns: 64
+<pre class="r"><code>cat(&quot;Number of rows in Raw Dataset :&quot;,  nrow(energy_raw),&#39;\n&#39;)</code></pre>
+<pre><code>## Number of rows in Raw Dataset : 21812</code></pre>
+<pre class="r"><code>cat(&quot;Number of columns in Raw Dataset :&quot;, ncol(energy_raw),&#39;\n&#39;)</code></pre>
+<pre><code>## Number of columns in Raw Dataset : 130</code></pre>
+<pre class="r"><code>energy_clean &lt;- filter_energy_data(energy_raw)
+cat(&quot;Number of rows in Filtered Dataset :&quot;,  nrow(energy_clean),&#39;\n&#39;)</code></pre>
+<pre><code>## Number of rows in Filtered Dataset : 3795</code></pre>
+<pre class="r"><code>cat(&quot;Number of columns in Filtered Dataset :&quot;, ncol(energy_clean),&#39;\n&#39;)</code></pre>
+<pre><code>## Number of columns in Filtered Dataset : 130</code></pre>
+<pre class="r"><code>energy_selected &lt;- select_energy_columns(energy_clean)
+
+cat(&quot;Number of columns in Dataset after dropping unnecessary columns:&quot;, ncol(energy_selected),&#39;\n&#39;)</code></pre>
+<pre><code>## Number of columns in Dataset after dropping unnecessary columns: 15</code></pre>
+<pre class="r"><code>energy_transformed &lt;- transform_energy_data(energy_selected)
+
+# Add continent info
+energy_transformed &lt;- energy_transformed %&gt;%
+  mutate(continent = countrycode(country, &quot;country.name&quot;, &quot;continent&quot;))
+
+cat(&quot;Number of columns in Dataset after creating new columns and transformations:&quot;, ncol(energy_transformed),&#39;\n&#39;)</code></pre>
+<pre><code>## Number of columns in Dataset after creating new columns and transformations: 31</code></pre>
+<pre class="r"><code>### Checking for duplicated and % of missing values
+energy_transformed %&gt;% filter(duplicated(.))</code></pre>
+<div data-pagedtable="false">
+<script data-pagedtable-source type="application/json">
+{"columns":[{"label":["country"],"name":[1],"type":["chr"],"align":["left"]},{"label":["iso_code"],"name":[2],"type":["chr"],"align":["left"]},{"label":["year"],"name":[3],"type":["dbl"],"align":["right"]},{"label":["population"],"name":[4],"type":["dbl"],"align":["right"]},{"label":["gdp"],"name":[5],"type":["dbl"],"align":["right"]},{"label":["electricity_generation"],"name":[6],"type":["dbl"],"align":["right"]},{"label":["renewables_electricity"],"name":[7],"type":["dbl"],"align":["right"]},{"label":["fossil_electricity"],"name":[8],"type":["dbl"],"align":["right"]},{"label":["solar_electricity"],"name":[9],"type":["dbl"],"align":["right"]},{"label":["wind_electricity"],"name":[10],"type":["dbl"],"align":["right"]},{"label":["hydro_electricity"],"name":[11],"type":["dbl"],"align":["right"]},{"label":["renewables_share_elec"],"name":[12],"type":["dbl"],"align":["right"]},{"label":["coal_share_elec"],"name":[13],"type":["dbl"],"align":["right"]},{"label":["gas_share_elec"],"name":[14],"type":["dbl"],"align":["right"]},{"label":["oil_share_elec"],"name":[15],"type":["dbl"],"align":["right"]},{"label":["electricity_per_capita"],"name":[16],"type":["dbl"],"align":["right"]},{"label":["renewables_per_capita"],"name":[17],"type":["dbl"],"align":["right"]},{"label":["fossil_per_capita"],"name":[18],"type":["dbl"],"align":["right"]},{"label":["electricity_per_gdp"],"name":[19],"type":["dbl"],"align":["right"]},{"label":["gdp_per_electricity"],"name":[20],"type":["dbl"],"align":["right"]},{"label":["log_gdp"],"name":[21],"type":["dbl"],"align":["right"]},{"label":["log_population"],"name":[22],"type":["dbl"],"align":["right"]},{"label":["log_electricity"],"name":[23],"type":["dbl"],"align":["right"]},{"label":["fossil_to_renewable_ratio"],"name":[24],"type":["dbl"],"align":["right"]},{"label":["fossil_share_elec"],"name":[25],"type":["dbl"],"align":["right"]},{"label":["solar_share"],"name":[26],"type":["dbl"],"align":["right"]},{"label":["wind_share"],"name":[27],"type":["dbl"],"align":["right"]},{"label":["hydro_share"],"name":[28],"type":["dbl"],"align":["right"]},{"label":["high_renewable"],"name":[29],"type":["dbl"],"align":["right"]},{"label":["transitioning"],"name":[30],"type":["dbl"],"align":["right"]},{"label":["continent"],"name":[31],"type":["chr"],"align":["left"]}],"data":[],"options":{"columns":{"min":{},"max":[10]},"rows":{"min":[10],"max":[10]},"pages":{}}}
+  </script>
+</div>
+<pre class="r"><code>### Checking for missing values
+print(&quot;Percentage of Missing Values left :&quot;)</code></pre>
+<pre><code>## [1] &quot;Percentage of Missing Values left :&quot;</code></pre>
+<pre class="r"><code>na_percentage(energy_transformed)</code></pre>
+<pre><code>##                   country                  iso_code                      year 
+##                      0.00                      0.00                      0.00 
+##                population                       gdp    electricity_generation 
+##                      0.00                      0.00                      0.00 
+##    renewables_electricity        fossil_electricity         solar_electricity 
+##                      0.00                      0.00                      0.13 
+##          wind_electricity         hydro_electricity     renewables_share_elec 
+##                      0.00                      1.92                      0.13 
+##           coal_share_elec            gas_share_elec            oil_share_elec 
+##                      0.13                      0.71                      0.13 
+##    electricity_per_capita     renewables_per_capita         fossil_per_capita 
+##                      0.00                      0.00                      0.00 
+##       electricity_per_gdp       gdp_per_electricity                   log_gdp 
+##                      0.00                      0.00                      0.00 
+##            log_population           log_electricity fossil_to_renewable_ratio 
+##                      0.00                      0.00                      0.00 
+##         fossil_share_elec               solar_share                wind_share 
+##                      0.00                      0.13                      0.00 
+##               hydro_share            high_renewable             transitioning 
+##                      1.92                      0.13                      0.13 
+##                 continent 
+##                      0.00</code></pre>
+<pre class="r"><code># Filter for latest year
+latest_year &lt;- max(energy_transformed$year, na.rm = TRUE)
+latest_data &lt;- energy_transformed %&gt;% filter(year == latest_year)
+
+# Get top countries for different metrics
+top_renewables &lt;- latest_data %&gt;% arrange(desc(renewables_electricity)) %&gt;% slice(1)
+top_generation &lt;- latest_data %&gt;% arrange(desc(electricity_generation)) %&gt;% slice(1)
+top_per_capita &lt;- latest_data %&gt;% arrange(desc(electricity_per_capita)) %&gt;% slice(1)
+top_gdp &lt;- latest_data %&gt;% arrange(desc(gdp)) %&gt;% slice(1)
+top_renew_share &lt;- latest_data %&gt;% arrange(desc(renewables_share_elec)) %&gt;% slice(1)
+
+# Print the results
+cat(glue::glue(&quot;Year considered: {latest_year}\n&quot;))</code></pre>
+<pre><code>## Year considered: 2022</code></pre>
+<pre class="r"><code>cat(glue::glue(&quot; Country with most renewable electricity: {top_renewables$country} ({round(top_renewables$renewables_electricity, 2)} TWh)\n&quot;))</code></pre>
+<pre><code>## Country with most renewable electricity: China (2670.18 TWh)</code></pre>
+<pre class="r"><code>cat(glue::glue(&quot; Country with highest electricity generation: {top_generation$country} ({round(top_generation$electricity_generation, 2)} TWh)\n&quot;))</code></pre>
+<pre><code>## Country with highest electricity generation: China (8848.73 TWh)</code></pre>
+<pre class="r"><code>cat(glue::glue(&quot; Country with highest GDP: {top_gdp$country} (${format(round(top_gdp$gdp, 0), big.mark=&#39;,&#39;)})\n&quot;))</code></pre>
+<pre><code>## Country with highest GDP: China ($2.696602e+13)</code></pre>
+<pre class="r"><code>cat(glue::glue(&quot; Country with highest renewables share: {top_renew_share$country} ({round(top_renew_share$renewables_share_elec, 2)}%)\n&quot;))</code></pre>
+<pre><code>## Country with highest renewables share: Albania (100%)</code></pre>
+<pre class="r"><code>library(tidyverse)
+co2_data &lt;- read_csv(&quot;https://raw.githubusercontent.com/owid/co2-data/master/owid-co2-data.csv&quot;)</code></pre>
+<pre><code>## Rows: 50191 Columns: 79
 ## ── Column specification ────────────────────────────────────────────────────────
 ## Delimiter: &quot;,&quot;
 ## chr  (2): country, iso_code
-## dbl (62): year, population, gdp, co2, co2_including_luc, co2_including_luc_p...
+## dbl (77): year, population, gdp, cement_co2, cement_co2_per_capita, co2, co2...
 ## 
 ## ℹ Use `spec()` to retrieve the full column specification for this data.
 ## ℹ Specify the column types or set `show_col_types = FALSE` to quiet this message.</code></pre>
-<pre class="r"><code># # Check for overlapping years
- intersect(energy_transformed$year, co2_transformed$year)</code></pre>
-<pre><code>##  [1] 2000 2001 2002 2003 2004 2005 2006 2007 2008 2009 2010 2011 2012 2013 2014
-## [16] 2015 2016 2017 2018 2019 2020 2021 2022</code></pre>
-<pre class="r"><code># 
+<pre class="r"><code>filter_co2_data &lt;- function(df) {
+  df %&gt;%
+    filter(!str_starts(iso_code, &quot;OWID&quot;), !is.na(country), !is.na(year)) %&gt;%
+    filter(year &gt;= 2000) %&gt;%
+    select(where(~ sum(is.na(.)) &lt; 0.4 * nrow(df))) %&gt;%
+    filter(!is.na(population), !is.na(gdp))
+}
+
+co2_data = filter_co2_data(co2_data)
+
+co2_data = co2_data %&gt;% select(-c(cement_co2,cement_co2_per_capita,co2_growth_abs,co2_growth_prct,co2_including_luc_growth_abs,co2_including_luc_growth_prct,cumulative_cement_co2,cumulative_co2_including_luc,cumulative_luc_co2,flaring_co2,flaring_co2_per_capita,cumulative_flaring_co2,share_global_flaring_co2,share_global_cumulative_flaring_co2))
+
+#CO₂ emissions year-over-year change
+co2_data = co2_data %&gt;%
+  group_by(country) %&gt;%
+  mutate(co2_pct_change = (co2 - lag(co2)) / lag(co2) * 100)
+#Total CO₂ from fossil fuel types 
+co2_data = co2_data %&gt;%
+  mutate(fossil_fuel_co2 = coal_co2 + oil_co2 + gas_co2)
+#log gdp
+co2_data = co2_data %&gt;% mutate(log_gdp = log(gdp))
+#log co2
+co2_data = co2_data %&gt;% mutate(log_co2 = log(co2))</code></pre>
+<pre class="r"><code># energy_transformed &lt;- read_csv(&quot;/Users/manasamangipudi/Desktop/Semester-3/DataWrangling/Project/data/cleaned/energy_transformed_new.csv&quot;)
+co2_transformed &lt;- co2_data#read_csv(&quot;/Users/manasamangipudi/Desktop/Semester-3/DataWrangling/Project/data/cleaned/co2_transformed.csv&quot;)
+
 
 co2_transformed &lt;- co2_transformed %&gt;%
   select(-iso_code, -population, -gdp, -log_gdp)
@@ -1689,22 +1862,13 @@ energy_co2_merged &lt;- left_join(
   by = c(&quot;country&quot;, &quot;year&quot;)#,&quot;iso_code&quot;,&quot;population&quot;,&quot;gdp&quot;)
 )
 
-write_csv(energy_co2_merged, &quot;/Users/manasamangipudi/Desktop/Semester-3/DataWrangling/Project/data/energy_co2_data_merged.csv&quot;)</code></pre>
-<pre class="r"><code># energy_co2_merged = read_csv(&quot;https://raw.githubusercontent.com/manasamangipudi/DS597-Group8/refs/heads/main/data/energy_co2_data_merged.csv?token=GHSAT0AAAAAACXSKI7KRXBBKARAL6SJVM7K2A2GFMQ&quot;)
-
-drop_outliers_thresh &lt;- function(df, max_outliers = 9) {
-  numeric_cols &lt;- df %&gt;% select(where(is.numeric)) %&gt;% colnames()
-  outlier_matrix &lt;- map_dfc(numeric_cols, function(col) {
-    Q1 &lt;- quantile(df[[col]], 0.25, na.rm = TRUE)
-    Q3 &lt;- quantile(df[[col]], 0.75, na.rm = TRUE)
-    IQR &lt;- Q3 - Q1
-    lower &lt;- Q1 - 2 * IQR
-    upper &lt;- Q3 + 2 * IQR
-    tibble(!!col := df[[col]] &lt; lower | df[[col]] &gt; upper)
-  })
-  row_outlier_counts &lt;- outlier_matrix %&gt;% rowSums(na.rm = TRUE)
-  df[row_outlier_counts &lt;= max_outliers, ]
-}</code></pre>
+#write_csv(energy_co2_merged, &quot;/Users/manasamangipudi/Desktop/Semester-3/DataWrangling/Project/data/energy_co2_data_merged.csv&quot;)</code></pre>
+<pre class="r"><code>head(energy_co2_merged)</code></pre>
+<div data-pagedtable="false">
+<script data-pagedtable-source type="application/json">
+{"columns":[{"label":["country"],"name":[1],"type":["chr"],"align":["left"]},{"label":["iso_code"],"name":[2],"type":["chr"],"align":["left"]},{"label":["year"],"name":[3],"type":["dbl"],"align":["right"]},{"label":["population"],"name":[4],"type":["dbl"],"align":["right"]},{"label":["gdp"],"name":[5],"type":["dbl"],"align":["right"]},{"label":["electricity_generation"],"name":[6],"type":["dbl"],"align":["right"]},{"label":["renewables_electricity"],"name":[7],"type":["dbl"],"align":["right"]},{"label":["fossil_electricity"],"name":[8],"type":["dbl"],"align":["right"]},{"label":["solar_electricity"],"name":[9],"type":["dbl"],"align":["right"]},{"label":["wind_electricity"],"name":[10],"type":["dbl"],"align":["right"]},{"label":["hydro_electricity"],"name":[11],"type":["dbl"],"align":["right"]},{"label":["renewables_share_elec"],"name":[12],"type":["dbl"],"align":["right"]},{"label":["coal_share_elec"],"name":[13],"type":["dbl"],"align":["right"]},{"label":["gas_share_elec"],"name":[14],"type":["dbl"],"align":["right"]},{"label":["oil_share_elec"],"name":[15],"type":["dbl"],"align":["right"]},{"label":["electricity_per_capita"],"name":[16],"type":["dbl"],"align":["right"]},{"label":["renewables_per_capita"],"name":[17],"type":["dbl"],"align":["right"]},{"label":["fossil_per_capita"],"name":[18],"type":["dbl"],"align":["right"]},{"label":["electricity_per_gdp"],"name":[19],"type":["dbl"],"align":["right"]},{"label":["gdp_per_electricity"],"name":[20],"type":["dbl"],"align":["right"]},{"label":["log_gdp"],"name":[21],"type":["dbl"],"align":["right"]},{"label":["log_population"],"name":[22],"type":["dbl"],"align":["right"]},{"label":["log_electricity"],"name":[23],"type":["dbl"],"align":["right"]},{"label":["fossil_to_renewable_ratio"],"name":[24],"type":["dbl"],"align":["right"]},{"label":["fossil_share_elec"],"name":[25],"type":["dbl"],"align":["right"]},{"label":["solar_share"],"name":[26],"type":["dbl"],"align":["right"]},{"label":["wind_share"],"name":[27],"type":["dbl"],"align":["right"]},{"label":["hydro_share"],"name":[28],"type":["dbl"],"align":["right"]},{"label":["high_renewable"],"name":[29],"type":["dbl"],"align":["right"]},{"label":["transitioning"],"name":[30],"type":["dbl"],"align":["right"]},{"label":["continent"],"name":[31],"type":["chr"],"align":["left"]},{"label":["co2"],"name":[32],"type":["dbl"],"align":["right"]},{"label":["co2_including_luc"],"name":[33],"type":["dbl"],"align":["right"]},{"label":["co2_including_luc_per_capita"],"name":[34],"type":["dbl"],"align":["right"]},{"label":["co2_including_luc_per_gdp"],"name":[35],"type":["dbl"],"align":["right"]},{"label":["co2_including_luc_per_unit_energy"],"name":[36],"type":["dbl"],"align":["right"]},{"label":["co2_per_capita"],"name":[37],"type":["dbl"],"align":["right"]},{"label":["co2_per_gdp"],"name":[38],"type":["dbl"],"align":["right"]},{"label":["co2_per_unit_energy"],"name":[39],"type":["dbl"],"align":["right"]},{"label":["coal_co2"],"name":[40],"type":["dbl"],"align":["right"]},{"label":["coal_co2_per_capita"],"name":[41],"type":["dbl"],"align":["right"]},{"label":["consumption_co2"],"name":[42],"type":["dbl"],"align":["right"]},{"label":["consumption_co2_per_capita"],"name":[43],"type":["dbl"],"align":["right"]},{"label":["consumption_co2_per_gdp"],"name":[44],"type":["dbl"],"align":["right"]},{"label":["cumulative_co2"],"name":[45],"type":["dbl"],"align":["right"]},{"label":["cumulative_coal_co2"],"name":[46],"type":["dbl"],"align":["right"]},{"label":["cumulative_gas_co2"],"name":[47],"type":["dbl"],"align":["right"]},{"label":["cumulative_oil_co2"],"name":[48],"type":["dbl"],"align":["right"]},{"label":["cumulative_other_co2"],"name":[49],"type":["dbl"],"align":["right"]},{"label":["energy_per_capita"],"name":[50],"type":["dbl"],"align":["right"]},{"label":["energy_per_gdp"],"name":[51],"type":["dbl"],"align":["right"]},{"label":["gas_co2"],"name":[52],"type":["dbl"],"align":["right"]},{"label":["gas_co2_per_capita"],"name":[53],"type":["dbl"],"align":["right"]},{"label":["ghg_excluding_lucf_per_capita"],"name":[54],"type":["dbl"],"align":["right"]},{"label":["ghg_per_capita"],"name":[55],"type":["dbl"],"align":["right"]},{"label":["land_use_change_co2"],"name":[56],"type":["dbl"],"align":["right"]},{"label":["land_use_change_co2_per_capita"],"name":[57],"type":["dbl"],"align":["right"]},{"label":["methane"],"name":[58],"type":["dbl"],"align":["right"]},{"label":["methane_per_capita"],"name":[59],"type":["dbl"],"align":["right"]},{"label":["nitrous_oxide"],"name":[60],"type":["dbl"],"align":["right"]},{"label":["nitrous_oxide_per_capita"],"name":[61],"type":["dbl"],"align":["right"]},{"label":["oil_co2"],"name":[62],"type":["dbl"],"align":["right"]},{"label":["oil_co2_per_capita"],"name":[63],"type":["dbl"],"align":["right"]},{"label":["other_co2_per_capita"],"name":[64],"type":["dbl"],"align":["right"]},{"label":["other_industry_co2"],"name":[65],"type":["dbl"],"align":["right"]},{"label":["primary_energy_consumption"],"name":[66],"type":["dbl"],"align":["right"]},{"label":["share_global_cement_co2"],"name":[67],"type":["dbl"],"align":["right"]},{"label":["share_global_co2"],"name":[68],"type":["dbl"],"align":["right"]},{"label":["share_global_co2_including_luc"],"name":[69],"type":["dbl"],"align":["right"]},{"label":["share_global_coal_co2"],"name":[70],"type":["dbl"],"align":["right"]},{"label":["share_global_cumulative_cement_co2"],"name":[71],"type":["dbl"],"align":["right"]},{"label":["share_global_cumulative_co2"],"name":[72],"type":["dbl"],"align":["right"]},{"label":["share_global_cumulative_co2_including_luc"],"name":[73],"type":["dbl"],"align":["right"]},{"label":["share_global_cumulative_coal_co2"],"name":[74],"type":["dbl"],"align":["right"]},{"label":["share_global_cumulative_gas_co2"],"name":[75],"type":["dbl"],"align":["right"]},{"label":["share_global_cumulative_luc_co2"],"name":[76],"type":["dbl"],"align":["right"]},{"label":["share_global_cumulative_oil_co2"],"name":[77],"type":["dbl"],"align":["right"]},{"label":["share_global_cumulative_other_co2"],"name":[78],"type":["dbl"],"align":["right"]},{"label":["share_global_gas_co2"],"name":[79],"type":["dbl"],"align":["right"]},{"label":["share_global_luc_co2"],"name":[80],"type":["dbl"],"align":["right"]},{"label":["share_global_oil_co2"],"name":[81],"type":["dbl"],"align":["right"]},{"label":["share_global_other_co2"],"name":[82],"type":["dbl"],"align":["right"]},{"label":["share_of_temperature_change_from_ghg"],"name":[83],"type":["dbl"],"align":["right"]},{"label":["temperature_change_from_ch4"],"name":[84],"type":["dbl"],"align":["right"]},{"label":["temperature_change_from_co2"],"name":[85],"type":["dbl"],"align":["right"]},{"label":["temperature_change_from_ghg"],"name":[86],"type":["dbl"],"align":["right"]},{"label":["temperature_change_from_n2o"],"name":[87],"type":["dbl"],"align":["right"]},{"label":["total_ghg"],"name":[88],"type":["dbl"],"align":["right"]},{"label":["total_ghg_excluding_lucf"],"name":[89],"type":["dbl"],"align":["right"]},{"label":["trade_co2"],"name":[90],"type":["dbl"],"align":["right"]},{"label":["trade_co2_share"],"name":[91],"type":["dbl"],"align":["right"]},{"label":["co2_pct_change"],"name":[92],"type":["dbl"],"align":["right"]},{"label":["fossil_fuel_co2"],"name":[93],"type":["dbl"],"align":["right"]},{"label":["log_co2"],"name":[94],"type":["dbl"],"align":["right"]}],"data":[{"1":"Afghanistan","2":"AFG","3":"2000","4":"19542986","5":"11283793920","6":"0.48","7":"0.31","8":"0.17","9":"0","10":"0","11":"0.31","12":"64.583","13":"0.000","14":"0","15":"35.417","16":"2.456124e-08","17":"1.586247e-08","18":"8.698773e-09","19":"4.253888e-11","20":"7624185081","21":"23.14663","22":"16.78813","23":"0.3920421","24":"0.12977099","25":"0.1148649","26":"0","27":"0","28":"0.2366412","29":"1","30":"1","31":"Asia","32":"1.047","33":"1.104","34":"0.055","35":"0.098","36":"0.187","37":"0.052","38":"0.093","39":"0.177","40":"0.004","41":"0.000","42":"NA","43":"NA","44":"NA","45":"72.449","46":"11.851","47":"13.897","48":"38.798","49":"NA","50":"302.595","51":"0.524","52":"0.224","53":"0.011","54":"0.225","55":"0.842","56":"0.057","57":"0.003","58":"11.643","59":"0.578","60":"3.221","61":"0.160","62":"0.788","63":"0.039","64":"NA","65":"NA","66":"5.914","67":"0.001","68":"0.004","69":"0.004","70":"0.000","71":"0.011","72":"0.007","73":"0.020","74":"0.002","75":"0.011","76":"0.112","77":"0.011","78":"NA","79":"0.005","80":"0.001","81":"0.008","82":"NA","83":"0.081","84":"0","85":"0","86":"0.001","87":"0","88":"16.955","89":"4.521","90":"NA","91":"NA","92":"NA","93":"1.016","94":"0.04592893"},{"1":"Afghanistan","2":"AFG","3":"2001","4":"19688634","5":"11021273088","6":"0.69","7":"0.50","8":"0.19","9":"0","10":"0","11":"0.50","12":"72.464","13":"5.797","14":"0","15":"21.739","16":"3.504560e-08","17":"2.539536e-08","18":"9.650238e-09","19":"6.260620e-11","20":"6521463366","21":"23.12309","22":"16.79555","23":"0.5247285","24":"0.12666667","25":"0.1124260","26":"0","27":"0","28":"0.3333333","29":"1","30":"1","31":"Asia","32":"1.069","33":"1.840","34":"0.091","35":"0.167","36":"0.394","37":"0.053","38":"0.097","39":"0.229","40":"0.070","41":"0.003","42":"NA","43":"NA","44":"NA","45":"73.519","46":"11.921","47":"14.106","48":"39.560","49":"NA","50":"236.892","51":"0.423","52":"0.209","53":"0.010","54":"0.230","55":"0.778","56":"0.771","57":"0.038","58":"10.357","59":"0.511","60":"2.852","61":"0.141","62":"0.762","63":"0.038","64":"NA","65":"NA","66":"4.664","67":"0.001","68":"0.004","69":"0.006","70":"0.001","71":"0.010","72":"0.007","73":"0.020","74":"0.002","75":"0.011","76":"0.111","77":"0.011","78":"NA","79":"0.004","80":"0.016","81":"0.007","82":"NA","83":"0.079","84":"0","85":"0","86":"0.001","87":"0","88":"15.772","89":"4.670","90":"NA","91":"NA","92":"2.101242","93":"1.041","94":"0.06672363"},{"1":"Afghanistan","2":"AFG","3":"2002","4":"21000258","5":"18804871168","6":"0.71","7":"0.56","8":"0.15","9":"0","10":"0","11":"0.56","12":"78.873","13":"5.634","14":"0","15":"15.493","16":"3.380911e-08","17":"2.666634e-08","18":"7.142769e-09","19":"3.775617e-11","20":"10997000683","21":"23.65738","22":"16.86005","23":"0.5364934","24":"0.09615385","25":"0.0877193","26":"0","27":"0","28":"0.3589744","29":"1","30":"1","31":"Asia","32":"1.341","33":"6.115","34":"0.286","35":"0.325","36":"1.381","37":"0.063","38":"0.071","39":"0.303","40":"0.055","41":"0.003","42":"NA","43":"NA","44":"NA","45":"74.860","46":"11.976","47":"14.653","48":"40.288","49":"NA","50":"210.862","51":"0.235","52":"0.547","53":"0.026","54":"0.240","55":"0.970","56":"4.774","57":"0.223","58":"12.464","59":"0.583","60":"3.298","61":"0.154","62":"0.727","63":"0.034","64":"NA","65":"NA","66":"4.428","67":"0.001","68":"0.005","69":"0.019","70":"0.001","71":"0.010","72":"0.007","73":"0.020","74":"0.002","75":"0.011","76":"0.111","77":"0.010","78":"NA","79":"0.011","80":"0.093","81":"0.007","82":"NA","83":"0.079","84":"0","85":"0","86":"0.001","87":"0","88":"20.735","89":"5.132","90":"NA","91":"NA","92":"25.444341","93":"1.329","94":"0.29341560"},{"1":"Afghanistan","2":"AFG","3":"2003","4":"22645136","5":"21074343936","6":"0.91","7":"0.63","8":"0.28","9":"0","10":"0","11":"0.63","12":"69.231","13":"9.890","14":"0","15":"20.879","16":"4.018523e-08","17":"2.782054e-08","18":"1.236469e-08","19":"4.318047e-11","20":"11033687925","21":"23.77132","22":"16.93546","23":"0.6471032","24":"0.17177914","25":"0.1465969","26":"0","27":"0","28":"0.3865031","29":"1","30":"1","31":"Asia","32":"1.560","33":"5.925","34":"0.261","35":"0.281","36":"1.138","37":"0.069","38":"0.074","39":"0.299","40":"0.092","41":"0.004","42":"NA","43":"NA","44":"NA","45":"76.419","46":"12.068","47":"15.120","48":"41.279","49":"NA","50":"229.968","51":"0.247","52":"0.466","53":"0.021","54":"0.243","55":"0.942","56":"4.365","57":"0.192","58":"12.859","59":"0.566","60":"3.433","61":"0.151","62":"0.992","63":"0.044","64":"NA","65":"NA","66":"5.208","67":"0.001","68":"0.006","69":"0.018","70":"0.001","71":"0.010","72":"0.007","73":"0.020","74":"0.002","75":"0.011","76":"0.111","77":"0.010","78":"NA","79":"0.009","80":"0.072","81":"0.009","82":"NA","83":"0.078","84":"0","85":"0","86":"0.001","87":"0","88":"21.423","89":"5.521","90":"NA","91":"NA","92":"16.331096","93":"1.550","94":"0.44468582"},{"1":"Afghanistan","2":"AFG","3":"2004","4":"23553554","5":"22332569600","6":"0.79","7":"0.56","8":"0.23","9":"0","10":"0","11":"0.56","12":"70.886","13":"7.595","14":"0","15":"21.519","16":"3.354059e-08","17":"2.377561e-08","18":"9.764981e-09","19":"3.537434e-11","20":"12476295866","21":"23.82931","22":"16.97479","23":"0.5822156","24":"0.14743590","25":"0.1284916","26":"0","27":"0","28":"0.3589744","29":"1","30":"1","31":"Asia","32":"1.237","33":"3.352","34":"0.142","35":"0.150","36":"0.697","37":"0.053","38":"0.055","39":"0.257","40":"0.092","41":"0.004","42":"NA","43":"NA","44":"NA","45":"77.656","46":"12.159","47":"15.347","48":"42.188","49":"NA","50":"204.231","51":"0.215","52":"0.227","53":"0.010","54":"0.227","55":"0.851","56":"2.115","57":"0.090","58":"12.922","59":"0.548","60":"3.410","61":"0.145","62":"0.909","63":"0.039","64":"NA","65":"NA","66":"4.810","67":"0.001","68":"0.004","69":"0.010","70":"0.001","71":"0.009","72":"0.007","73":"0.020","74":"0.002","75":"0.011","76":"0.110","77":"0.010","78":"NA","79":"0.004","80":"0.039","81":"0.008","82":"NA","83":"0.078","84":"0","85":"0","86":"0.001","87":"0","88":"20.057","89":"5.354","90":"NA","91":"NA","92":"-20.705128","93":"1.228","94":"0.21268909"},{"1":"Afghanistan","2":"AFG","3":"2005","4":"24411196","5":"25397686272","6":"0.82","7":"0.59","8":"0.23","9":"0","10":"0","11":"0.59","12":"71.951","13":"7.317","14":"0","15":"20.732","16":"3.359114e-08","17":"2.416924e-08","18":"9.421906e-09","19":"3.228641e-11","20":"13954772677","21":"23.95792","22":"17.01055","23":"0.5988365","24":"0.14465409","25":"0.1263736","26":"0","27":"0","28":"0.3710692","29":"1","30":"1","31":"Asia","32":"1.890","33":"2.780","34":"0.114","35":"0.109","36":"0.452","37":"0.077","38":"0.074","39":"0.307","40":"0.106","41":"0.004","42":"NA","43":"NA","44":"NA","45":"79.546","46":"12.266","47":"15.677","48":"43.635","49":"NA","50":"252.069","51":"0.242","52":"0.330","53":"0.014","54":"0.254","55":"0.851","56":"0.891","57":"0.037","58":"13.275","59":"0.544","60":"3.559","61":"0.146","62":"1.447","63":"0.059","64":"NA","65":"NA","66":"6.153","67":"0.001","68":"0.006","69":"0.008","70":"0.001","71":"0.009","72":"0.007","73":"0.019","74":"0.002","75":"0.011","76":"0.110","77":"0.010","78":"NA","79":"0.006","80":"0.018","81":"0.013","82":"NA","83":"0.078","84":"0","85":"0","86":"0.001","87":"0","88":"20.766","89":"6.204","90":"NA","91":"NA","92":"52.789006","93":"1.883","94":"0.63657683"}],"options":{"columns":{"min":{},"max":[10]},"rows":{"min":[10],"max":[10]},"pages":{}}}
+  </script>
+</div>
 <pre class="r"><code>ggplot(energy_co2_merged %&gt;% filter(country %in% c(&quot;United States&quot;,&quot;India&quot;,&quot;China&quot;,&quot;Russia&quot;,&quot;Japan&quot;)),aes(x=year,y=co2,color = country))+
   geom_line(size=1)+
   labs(title = &quot;CO2 Emisions Over Time for Global Super Powers &quot;,y=&quot;CO2 (Million Tonnes)&quot;)+
