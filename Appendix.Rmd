@@ -2,7 +2,9 @@
 title: "Appendix"
 author: "Vijay Koduri and Manasa Mangipudi"
 date: "2025-05-09"
-output: html_document
+output:
+  html_document: default
+  pdf_document: default
 ---
 
 ```{r setup, include=FALSE,eval=FALSE}
@@ -337,7 +339,7 @@ Energy Dataset:
 
 #### linear models:
 
-regressing CO2 in the US vs every other column:
+Regressing CO2 in the US vs every other column:
 
 ```{r, eval=FALSE}
 # 1. Filter for United States
@@ -372,3 +374,29 @@ significant <- results %>%
 head(significant %>% arrange(desc(estimate)))
 
 ```
+
+## Appendix F: Extra Visualizations
+
+![](images/clipboard-2022327846.png)
+
+![![](images/clipboard-3673368228.png)](images/clipboard-20999340.png)
+
+![![](images/clipboard-3464492709.png)![](images/clipboard-2949611512.png)](images/clipboard-2918339323.png)
+
+![![](images/clipboard-2070415103.png)](images/clipboard-383957142.png)
+
+![![](images/clipboard-921474954.png)![](images/clipboard-611461281.png)](images/clipboard-1671817997.png)
+
+![![](images/clipboard-3897284665.png)![](images/clipboard-3886532520.png)](images/clipboard-2944203634.png)
+
+CO2 Regressed on every other column:
+
+![](images/clipboard-4039883551.png)
+
+![![](images/clipboard-4180795081.png)](images/clipboard-3245638381.png)
+
+![](images/clipboard-1681718408.png)
+
+![![](images/clipboard-1495074318.png)](images/clipboard-105774062.png)
+
+![](images/clipboard-879696398.png)
