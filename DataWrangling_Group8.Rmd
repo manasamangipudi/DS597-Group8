@@ -213,7 +213,7 @@ co2_transformed <- co2_transformed %>%
 energy_co2_merged <- left_join(
   energy_transformed,
   co2_transformed,
-  by = c("country", "year")#,"iso_code","population","gdp")
+  by = c("country", "year")
 )
 
 #write_csv(energy_co2_merged, "/Users/manasamangipudi/Desktop/Semester-3/DataWrangling/Project/data/energy_co2_data_merged.csv")

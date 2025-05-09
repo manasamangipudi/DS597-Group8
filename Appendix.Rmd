@@ -49,6 +49,8 @@ filter_data <- function(df) {
     select(where(~ sum(is.na(.)) < 0.4 * nrow(df))) %>%
     filter(!is.na(population), !is.na(gdp))
 }
+
+
 ```
 
 -   Removing columns with 60% missing values.
@@ -67,7 +69,9 @@ select_energy_columns <- function(df) {
       renewables_share_elec, coal_share_elec, gas_share_elec, oil_share_elec
     )
 }
-#CO2 Dataset
+
+
+# #CO2 Dataset
 co2_data = co2_data %>% select(-c(cement_co2,cement_co2_per_capita,co2_growth_abs,co2_growth_prct,co2_including_luc_growth_abs,co2_including_luc_growth_prct,cumulative_cement_co2,cumulative_co2_including_luc,cumulative_luc_co2,flaring_co2,flaring_co2_per_capita,cumulative_flaring_co2,share_global_flaring_co2,share_global_cumulative_flaring_co2))
 ```
 
