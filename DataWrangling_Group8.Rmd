@@ -1,5 +1,5 @@
 ---
-title: "R Notebook"
+title: "Final Project - Complete Code and Implementation"
 output:
   html_document:
     df_print: paged
@@ -8,7 +8,7 @@ output:
 
 ### Load Libraries
 
-```{r}
+```{r Libraries}
 
 # Load required libraries
 library(tidyverse)
@@ -19,19 +19,21 @@ library(ggplot2)
 library(corrplot)
 library(broom)
 library(countrycode)
+library(ggrepel)
 
 ```
 
-### Data Wrangling Functions
+### Data Wrangling Functions - Missing Values, Selecting Columns, Data Transformations, Feature Engineering etc
 
-```{r}
+```{r Data Wrangling}
 
-
+# Load Raw Data from source
 load_energy_data <- function(url = "https://raw.githubusercontent.com/owid/energy-data/master/owid-energy-data.csv") {
   read_csv(url)
 }
 
-filter_energy_data <- function(df) {
+# Filter out unnecessary data and high missing values
+filter_data <- function(df) {
   df %>%
     filter(!str_starts(iso_code, "OWID"), !is.na(country), !is.na(year)) %>%
     filter(year >= 2000) %>%
@@ -39,6 +41,7 @@ filter_energy_data <- function(df) {
     filter(!is.na(population), !is.na(gdp))
 }
 
+# Select only necessary columns
 select_energy_columns <- function(df) {
   df %>%
     select(
@@ -50,6 +53,7 @@ select_energy_columns <- function(df) {
     )
 }
 
+# Add normalized metrics : based on population and GDP
 add_normalized_metrics <- function(df) {
   df %>%
     mutate(
@@ -61,6 +65,7 @@ add_normalized_metrics <- function(df) {
     )
 }
 
+# Log Transforms - Highly skewed variables like population, electricity generation 
 add_log_transforms <- function(df) {
   df %>%
     mutate(
@@ -70,10 +75,12 @@ add_log_transforms <- function(df) {
     )
 }
 
+# Check missing percentage
 na_percentage <- function(df) {
   sapply(df, function(col) round(mean(is.na(col)) * 100, 2))
 }
 
+# Add energy ratios - gives a perspective of percentages
 add_energy_ratios <- function(df) {
   df %>%
     mutate(
@@ -106,14 +113,15 @@ transform_energy_data <- function(df) {
 
 ### Load Dataset 2 - Electricity Generation Data
 
-```{r}
+```{r Loading and Processing Dataset 2}
 
 # Load and process
 energy_raw <- load_energy_data()
+#write_csv(energy_raw, "energy_raw.csv")
 cat("Number of rows in Raw Dataset :",  nrow(energy_raw),'\n')
 cat("Number of columns in Raw Dataset :", ncol(energy_raw),'\n')
 
-energy_clean <- filter_energy_data(energy_raw)
+energy_clean <- filter_data(energy_raw)
 cat("Number of rows in Filtered Dataset :",  nrow(energy_clean),'\n')
 cat("Number of columns in Filtered Dataset :", ncol(energy_clean),'\n')
 
@@ -134,13 +142,15 @@ cat("Number of columns in Dataset after creating new columns and transformations
 
 ### Check for Duplicates and Missing Values
 
-```{r}
+```{r Check Duplicates in dataset 2}
 ### Checking for duplicated and % of missing values
 energy_transformed %>% filter(duplicated(.))
 
 ### Checking for missing values
 print("Percentage of Missing Values left :")
 na_percentage(energy_transformed)
+#write_csv(energy_transformed, "energy_transformed.csv")
+
 ```
 
 ### Some latest stats about countries about renewable electricity
@@ -168,43 +178,43 @@ cat(glue::glue(" Country with highest renewables share: {top_renew_share$country
 
 ### Load CO2 and Clean Data - CO2 Emissions Dataset -1
 
-```{r}
+```{r dataset 1}
 co2_data <- read_csv("https://raw.githubusercontent.com/owid/co2-data/master/owid-co2-data.csv")
+#write_csv(co2_data, "co2_raw.csv")
 
-filter_co2_data <- function(df) {
-  df %>%
-    filter(!str_starts(iso_code, "OWID"), !is.na(country), !is.na(year)) %>%
-    filter(year >= 2000) %>%
-    select(where(~ sum(is.na(.)) < 0.4 * nrow(df))) %>%
-    filter(!is.na(population), !is.na(gdp))
-}
+# Filter data for required years and missing values
+co2_data = filter_data(co2_data)
 
-co2_data = filter_co2_data(co2_data)
-
+# Select necessary columns
 co2_data = co2_data %>% select(-c(cement_co2,cement_co2_per_capita,co2_growth_abs,co2_growth_prct,co2_including_luc_growth_abs,co2_including_luc_growth_prct,cumulative_cement_co2,cumulative_co2_including_luc,cumulative_luc_co2,flaring_co2,flaring_co2_per_capita,cumulative_flaring_co2,share_global_flaring_co2,share_global_cumulative_flaring_co2))
 
 #CO₂ emissions year-over-year change
 co2_data = co2_data %>%
   group_by(country) %>%
   mutate(co2_pct_change = (co2 - lag(co2)) / lag(co2) * 100)
+
 #Total CO₂ from fossil fuel types 
 co2_data = co2_data %>%
   mutate(fossil_fuel_co2 = coal_co2 + oil_co2 + gas_co2)
+
 #log gdp
 co2_data = co2_data %>% mutate(log_gdp = log(gdp))
+
 #log co2
 co2_data = co2_data %>% mutate(log_co2 = log(co2))
+
+# write to csv
+#write_csv(co2_transformed, "co2_transformed.csv")
 
 ```
 
 ### Merge Two Datasets to Single one - Using Country and Year as keys
 
-```{r}
- 
+```{r Merging Data}
 
 co2_transformed <- co2_data
 
-
+# Repeated column names in both datasets
 co2_transformed <- co2_transformed %>%
   select(-iso_code, -population, -gdp, -log_gdp)
 # 
@@ -216,6 +226,7 @@ energy_co2_merged <- left_join(
 )
 
 
+# Variable creation after merging datasets
 get_co2_electricity_ratio <- function(df) {
   df %>%
     mutate(
@@ -224,12 +235,14 @@ get_co2_electricity_ratio <- function(df) {
 
 energy_co2_merged <- get_co2_electricity_ratio(energy_co2_merged)
 
+# Save dataset
 #write_csv(energy_co2_merged, "/Users/manasamangipudi/Desktop/Semester-3/DataWrangling/Project/data/energy_co2_data_merged.csv")
 
 ```
 
-```{r}
-energy_co2_merged
+```{r Understanding merged data}
+head(energy_co2_merged)
+summary(energy_co2_merged)
 ```
 
 # Exploratory Data Analysis
@@ -240,15 +253,14 @@ energy_co2_merged
 
 ```{r}
 
-library(ggrepel)
 ggplot(energy_co2_merged %>% filter(year==2022), aes(x = population, y = co2, size = gdp, label = country)) +
   geom_point(alpha = 0.6, color = "steelblue") +
-  geom_text_repel(max.overlaps = 10, size = 5) +
+  geom_text_repel(max.overlaps = 5, size = 5) +
   scale_x_log10(labels = scales::comma) +
   scale_y_log10(labels = scales::comma) +
   labs(
     title = "Fossil Fuel CO2 Emissions vs Population (Bubble Size = GDP)",
-    x = "Population (log scale)",
+    x = "Population",
     y = "CO2 Emissions (log scale)",
     size = "GDP"
   ) +
@@ -557,10 +569,10 @@ library(ggrepel)
 ggplot(energy_co2_merged %>% filter(year==2022), aes(x = renewables_per_capita, y = co2, size = population, label = country)) +
   geom_point(alpha = 0.6, color = "steelblue") +
   geom_text_repel(max.overlaps = 5, size = 4) +
-  scale_x_log10(labels = scales::comma) +
+  scale_x_log10() +
   scale_y_log10(labels = scales::comma) +
   labs(
-    title = "Fossil Fuel CO2 Emissions vs Population (Bubble Size = Population)",
+    title = "Renewable Elec vs Co2 Emissions (Bubble Size = Population)",
     x = "Renewables_per_capita",
     y = "CO2 Emissions (log scale)",
     size = "Population"
@@ -667,3 +679,42 @@ energy_co2_merged %>%
 
 
 ```
+
+```{r}
+top5 <- c("United States", "China", "India", "Germany", "Brazil")
+
+energy_co2_merged %>%
+  filter(country %in% top5) %>%
+  mutate(co2_per_kwh = co2 / electricity_generation) %>%
+  filter(!is.na(co2_per_kwh), co2_per_kwh < 5) %>%  # Optional: filter extreme values
+  ggplot(aes(x = year, y = co2_per_kwh, color = country)) +
+  geom_line(size = 1.2) +
+  labs(
+    title = "CO2 Emissions per kWh Over Time (Top 5 Economies)",
+    x = "Year",
+    y = expression(CO[2]~"per kWh"),
+    color = "Country"
+  ) +
+  theme_minimal()
+
+```
+
+```{r}
+
+
+library(ggrepel)
+ggplot(energy_co2_merged %>% filter(year==2022), aes(x =renewables_share_elec , y = co2_per_kwh, size = population, label = country)) +
+  geom_point(alpha = 0.6, color = "steelblue") +
+  geom_text_repel(max.overlaps = 2, size = 4) +
+  scale_x_log10() +
+  scale_y_log10(labels = scales::comma) +
+  labs(
+    title = "Renewable Elec vs Co2 Emissions (Bubble Size = Population)",
+    x = "Renewables_per_capita",
+    y = "CO2 Emissions (log scale)",
+    size = "Population"
+  ) +
+  theme_minimal()
+
+```
+
