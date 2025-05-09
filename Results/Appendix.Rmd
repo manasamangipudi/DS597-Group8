@@ -1,0 +1,402 @@
+---
+title: "Appendix"
+author: "Vijay Koduri and Manasa Mangipudi"
+date: "2025-05-09"
+output:
+  html_document: default
+  pdf_document: default
+---
+
+```{r setup, include=FALSE,eval=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+## Appendix A: Data Sources and Schema
+
+#### Data Sources
+
+| Source            | Description                  | Format | Size    |
+|:------------------|:-----------------------------|:-------|:--------|
+| Our World In Data | Energy Generation/Consuption | CSV    | 22.79MB |
+| Our World In Data | CO2 Emissions                | CSV    | 31.80MB |
+
+#### Data Schema
+
+CO2 Dataset:
+
+| Column_Name | Data Type |
+|:------------|-----------|
+| country     | character |
+| year        | numeric   |
+| co2         | numeric   |
+
+Energy Dataset:
+
+| Column_Name            | Data Type |
+|:-----------------------|-----------|
+| country                | character |
+| year                   | numeric   |
+| gdp                    | numeric   |
+| electricity_generation | numeric   |
+
+## Appendix B: Data Cleaning and Transformation Steps
+
+#### Handling Missing Values:
+
+```{r, eval=FALSE}
+filter_data <- function(df) {
+  df %>%
+    filter(!str_starts(iso_code, "OWID"), !is.na(country), !is.na(year)) %>%
+    filter(year >= 2000) %>%
+    select(where(~ sum(is.na(.)) < 0.4 * nrow(df))) %>%
+    filter(!is.na(population), !is.na(gdp))
+}
+
+
+```
+
+-   Removing columns with 60% missing values.
+
+#### Selecting only useful columns:
+
+Energy Dataset:
+
+```{r, eval=FALSE}
+select_energy_columns <- function(df) {
+  df %>%
+    select(
+      country, iso_code, year, population, gdp,
+      electricity_generation,
+      renewables_electricity, fossil_electricity,
+      solar_electricity, wind_electricity, hydro_electricity,
+      renewables_share_elec, coal_share_elec, gas_share_elec, oil_share_elec
+    )
+}
+```
+
+CO2 Dataset:
+
+```{r,eval=FALSE}
+
+co2_data = co2_data %>% select(-c(cement_co2,cement_co2_per_capita,co2_growth_abs,co2_growth_prct,co2_including_luc_growth_abs,co2_including_luc_growth_prct,cumulative_cement_co2,cumulative_co2_including_luc,cumulative_luc_co2,flaring_co2,flaring_co2_per_capita,cumulative_flaring_co2,share_global_flaring_co2,share_global_cumulative_flaring_co2))
+```
+
+#### Transforming the data and adding new columns:
+
+CO2 Dataset:
+
+```{r, eval=FALSE}
+#CO₂ emissions year-over-year change
+co2_data = co2_data %>%
+  group_by(country) %>%
+  mutate(co2_pct_change = (co2 - lag(co2)) / lag(co2) * 100)
+#Total CO₂ from fossil fuel types 
+co2_data = co2_data %>%
+  mutate(fossil_fuel_co2 = coal_co2 + oil_co2 + gas_co2)
+#log gdp
+co2_data = co2_data %>% mutate(log_gdp = log(gdp))
+#log co2
+co2_data = co2_data %>% mutate(log_co2 = log(co2))
+
+```
+
+Energy Dataset:
+
+```{r, eval=FALSE}
+add_normalized_metrics <- function(df) {
+  df %>%
+    mutate(
+      electricity_per_capita = electricity_generation / population,
+      renewables_per_capita = renewables_electricity / population,
+      fossil_per_capita = fossil_electricity / population,
+      electricity_per_gdp = electricity_generation / gdp,
+      gdp_per_electricity = gdp / (electricity_generation + 1)
+    )
+}
+
+add_log_transforms <- function(df) {
+  df %>%
+    mutate(
+      log_gdp = log(gdp + 1),
+      log_population = log(population + 1),
+      log_electricity = log(electricity_generation + 1)
+    )
+}
+
+na_percentage <- function(df) {
+  sapply(df, function(col) round(mean(is.na(col)) * 100, 2))
+}
+
+add_energy_ratios <- function(df) {
+  df %>%
+    mutate(
+      fossil_to_renewable_ratio = fossil_electricity / (renewables_electricity + 1),
+      fossil_share_elec = fossil_electricity / (electricity_generation + 1),
+      solar_share = solar_electricity / (renewables_electricity + 1),
+      wind_share = wind_electricity / (renewables_electricity + 1),
+      hydro_share = hydro_electricity / (renewables_electricity + 1)
+    )
+}
+
+add_classification_flags <- function(df) {
+  df %>%
+    mutate(
+      high_renewable = if_else(renewables_share_elec > 50, 1, 0),
+      transitioning = if_else(renewables_share_elec > fossil_share_elec, 1, 0)
+    )
+}
+
+
+```
+
+-   Applied log transformations
+
+-   Normalized some columns
+
+-   Added ratios of different columns
+
+## Appendix C: Deduplication
+
+```{r, eval=FALSE}
+energy_transformed %>% filter(duplicated(.))
+```
+
+-   No duplicates were found.
+
+## Appendix D: Code for Reproducibility
+
+#### Retrieving, Cleaning and Merging the Data sets:
+
+```{r, eval=FALSE}
+#import these libraries
+library(tidyverse)
+library(skimr)
+library(janitor)
+library(naniar)
+library(ggplot2)
+library(corrplot)
+library(broom)
+library(countrycode)
+
+#Functions for loading the energy Data
+load_energy_data <- function(url = "https://raw.githubusercontent.com/owid/energy-data/master/owid-energy-data.csv") {
+  read_csv(url)
+}
+
+#function for removing columns with too many missing values
+filter_energy_data <- function(df) {
+  df %>%
+    filter(!str_starts(iso_code, "OWID"), !is.na(country), !is.na(year)) %>%
+    filter(year >= 2000) %>%
+    select(where(~ sum(is.na(.)) < 0.4 * nrow(df))) %>%
+    filter(!is.na(population), !is.na(gdp))
+}
+
+#selecting relevant columns
+select_energy_columns <- function(df) {
+  df %>%
+    select(
+      country, iso_code, year, population, gdp,
+      electricity_generation,
+      renewables_electricity, fossil_electricity,
+      solar_electricity, wind_electricity, hydro_electricity,
+      renewables_share_elec, coal_share_elec, gas_share_elec, oil_share_elec
+    )
+}
+
+#normalizing columns on population and 1 on gdp
+add_normalized_metrics <- function(df) {
+  df %>%
+    mutate(
+      electricity_per_capita = electricity_generation / population,
+      renewables_per_capita = renewables_electricity / population,
+      fossil_per_capita = fossil_electricity / population,
+      electricity_per_gdp = electricity_generation / gdp,
+      gdp_per_electricity = gdp / (electricity_generation + 1)
+    )
+}
+
+#log transfoming columns
+add_log_transforms <- function(df) {
+  df %>%
+    mutate(
+      log_gdp = log(gdp + 1),
+      log_population = log(population + 1),
+      log_electricity = log(electricity_generation + 1)
+    )
+}
+
+#creating ratio columns
+add_energy_ratios <- function(df) {
+  df %>%
+    mutate(
+      fossil_to_renewable_ratio = fossil_electricity / (renewables_electricity + 1),
+      fossil_share_elec = fossil_electricity / (electricity_generation + 1),
+      solar_share = solar_electricity / (renewables_electricity + 1),
+      wind_share = wind_electricity / (renewables_electricity + 1),
+      hydro_share = hydro_electricity / (renewables_electricity + 1)
+    )
+}
+
+#creating catagorical columns
+add_classification_flags <- function(df) {
+  df %>%
+    mutate(
+      high_renewable = if_else(renewables_share_elec > 50, 1, 0),
+      transitioning = if_else(renewables_share_elec > fossil_share_elec, 1, 0)
+    )
+}
+
+#function to run previous transformation functions
+transform_energy_data <- function(df) {
+  df %>%
+    add_normalized_metrics() %>%
+    add_log_transforms() %>%
+    add_energy_ratios() %>%
+    add_classification_flags()
+}
+
+
+energy_raw <- load_energy_data()
+energy_clean <- filter_energy_data(energy_raw)
+energy_selected <- select_energy_columns(energy_clean)
+energy_transformed <- transform_energy_data(energy_selected)
+
+#create continent column
+energy_transformed <- energy_transformed %>%
+  mutate(continent = countrycode(country, "country.name", "continent"))
+
+#loading CO2 data
+co2_data <- read_csv("https://raw.githubusercontent.com/owid/co2-data/master/owid-co2-data.csv")
+
+#filtering CO2 data
+filter_co2_data <- function(df) {
+  df %>%
+    filter(!str_starts(iso_code, "OWID"), !is.na(country), !is.na(year)) %>%
+    filter(year >= 2000) %>%
+    select(where(~ sum(is.na(.)) < 0.4 * nrow(df))) %>%
+    filter(!is.na(population), !is.na(gdp))
+}
+
+co2_data = filter_co2_data(co2_data)
+
+#selecting relevant columns
+co2_data = co2_data %>% select(-c(cement_co2,cement_co2_per_capita,co2_growth_abs,co2_growth_prct,co2_including_luc_growth_abs,co2_including_luc_growth_prct,cumulative_cement_co2,cumulative_co2_including_luc,cumulative_luc_co2,flaring_co2,flaring_co2_per_capita,cumulative_flaring_co2,share_global_flaring_co2,share_global_cumulative_flaring_co2))
+
+
+##Creating new columns and transforming columns
+
+#CO₂ emissions year-over-year change
+co2_data = co2_data %>%
+  group_by(country) %>%
+  mutate(co2_pct_change = (co2 - lag(co2)) / lag(co2) * 100)
+#Total CO₂ from fossil fuel types 
+co2_data = co2_data %>%
+  mutate(fossil_fuel_co2 = coal_co2 + oil_co2 + gas_co2)
+#log gdp
+co2_data = co2_data %>% mutate(log_gdp = log(gdp))
+#log co2
+co2_data = co2_data %>% mutate(log_co2 = log(co2))
+```
+
+## Appendix E: Data Cleaning and Processing Summary
+
+#### Data Cleaning Impact Overview:
+
+CO2 Dataset:
+
+|                      |        |         |                |
+|----------------------|--------|---------|----------------|
+| Data Wrangling Step  | Rows   | Columns | Missing Values |
+| Raw Dataset          | 50191  | 79      | 53.11%         |
+| N/A Columns Drop     | 3,772  | 65      | 12.34%         |
+| New Columns Addition | 3,772  | 69      | 12.25%         |
+
+Energy Dataset:
+
+|                      |       |         |                |
+|----------------------|-------|---------|----------------|
+| Data Wrangling Step  | Rows  | Columns | Missing Values |
+| Raw Dataset          | 21812 | 130     | 67.32%         |
+| N/A Columns Drop     | 3795  | 66      | 36.68%         |
+| New Columns Addition | 3795  | 31      | 0.18%          |
+
+#### Data Merging Summary:
+
+-   Number of Rows before merge: 3,772 (CO2 data) + 3795 (Energy Data)
+
+-   Number of Records After Merge: 3,795
+
+-   Key Matching Variable(s): country and year
+
+#### **Exploratory Data Analysis (EDA) Adjustments:**
+
+-   Normalization and scaling applied to numerical columns like: electricity_generation, renewables_electricity, fossil_electricity, gdp, and co2.
+
+-   Created new columns in the energy dataset representing the share of electricity coming from different sources like: fossil_share_elec, solar_share, wind_share, and hydro_share.
+
+-   Created new columns in the CO2 data set to show year over year change in CO2 emissions (co2_pct_change) and to show CO2 emissions from fossil fuels (fossil_fuel_co2)
+
+#### linear models:
+
+Regressing CO2 in the US vs every other column:
+
+```{r, eval=FALSE}
+# 1. Filter for United States
+us_data <- energy_co2_merged %>%
+  filter(country == "United States") %>%
+  select(-country, -iso_code, -continent, year)  # Remove non-numeric/grouping vars
+
+# 2. Remove columns with all NA or zero variance
+us_data <- us_data %>%
+  select(where(is.numeric)) %>%
+  select(where(~ sum(!is.na(.)) > 0)) %>%
+  select(where(~ sd(., na.rm = TRUE) > 0))
+
+# 3. Build models and extract p-values
+results <- map_dfr(
+  setdiff(names(us_data), "co2"),
+  function(var) {
+    df <- us_data %>% select(co2, !!sym(var)) %>% drop_na()
+    if (nrow(df) < 10) return(NULL)  # skip if not enough data
+    model <- lm(co2 ~ ., data = df)
+    tidy(model) %>%
+      filter(term != "(Intercept)") %>%
+      mutate(variable = var)
+  }
+)
+
+# 4. Print significant predictors (p >= 0.05)
+significant <- results %>%
+  filter(p.value < 0.05) %>%
+  arrange(p.value)
+
+head(significant %>% arrange(desc(estimate)))
+
+```
+
+## Appendix F: Extra Visualizations
+
+![](images/clipboard-2022327846.png)
+
+![![](images/clipboard-3673368228.png)](images/clipboard-20999340.png)
+
+![![](images/clipboard-3464492709.png)![](images/clipboard-2949611512.png)](images/clipboard-2918339323.png)
+
+![![](images/clipboard-2070415103.png)](images/clipboard-383957142.png)
+
+![![](images/clipboard-921474954.png)![](images/clipboard-611461281.png)](images/clipboard-1671817997.png)
+
+![![](images/clipboard-3897284665.png)![](images/clipboard-3886532520.png)](images/clipboard-2944203634.png)
+
+CO2 Regressed on every other column:
+
+![](images/clipboard-4039883551.png)
+
+![![](images/clipboard-4180795081.png)](images/clipboard-3245638381.png)
+
+![](images/clipboard-1681718408.png)
+
+![![](images/clipboard-1495074318.png)](images/clipboard-105774062.png)
+
+![](images/clipboard-879696398.png)

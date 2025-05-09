@@ -81,11 +81,6 @@ transform_energy_data <- function(df) {
 }
 
 
-```
-
-### Load Dataset 2 - Electricity Generation Data
-
-```{r Loading and Processing Dataset 2}
 
 # Load and process
 energy_raw <- load_energy_data()
@@ -113,6 +108,6 @@ cat("Number of columns in Dataset after creating new columns and transformations
 energy_transformed %>% filter(duplicated(.))
 
 ### Checking for missing values
-print("Percentage of Missing Values left :")
-na_percentage(energy_transformed)
-#write_csv(energy_transformed, "energy_transformed.csv")
+cat("Percentage of Missing Values left :", na_percentage(energy_transformed))
+
+write_csv(energy_transformed, "energy_transformed.csv")

@@ -1,0 +1,720 @@
+---
+title: "Final Project - Complete Code and Implementation"
+output:
+  html_document:
+    df_print: paged
+  pdf_document: default
+---
+
+### Load Libraries
+
+```{r Libraries}
+
+# Load required libraries
+library(tidyverse)
+library(skimr)
+library(janitor)
+library(naniar)
+library(ggplot2)
+library(corrplot)
+library(broom)
+library(countrycode)
+library(ggrepel)
+
+```
+
+### Data Wrangling Functions - Missing Values, Selecting Columns, Data Transformations, Feature Engineering etc
+
+```{r Data Wrangling}
+
+# Load Raw Data from source
+load_energy_data <- function(url = "https://raw.githubusercontent.com/owid/energy-data/master/owid-energy-data.csv") {
+  read_csv(url)
+}
+
+# Filter out unnecessary data and high missing values
+filter_data <- function(df) {
+  df %>%
+    filter(!str_starts(iso_code, "OWID"), !is.na(country), !is.na(year)) %>%
+    filter(year >= 2000) %>%
+    select(where(~ sum(is.na(.)) < 0.4 * nrow(df))) %>%
+    filter(!is.na(population), !is.na(gdp))
+}
+
+# Select only necessary columns
+select_energy_columns <- function(df) {
+  df %>%
+    select(
+      country, iso_code, year, population, gdp,
+      electricity_generation,
+      renewables_electricity, fossil_electricity,
+      solar_electricity, wind_electricity, hydro_electricity,
+      renewables_share_elec, coal_share_elec, gas_share_elec, oil_share_elec
+    )
+}
+
+# Add normalized metrics : based on population and GDP
+add_normalized_metrics <- function(df) {
+  df %>%
+    mutate(
+      electricity_per_capita = electricity_generation / population,
+      renewables_per_capita = renewables_electricity / population,
+      fossil_per_capita = fossil_electricity / population,
+      electricity_per_gdp = electricity_generation / gdp,
+      gdp_per_electricity = gdp / (electricity_generation + 1)
+    )
+}
+
+# Log Transforms - Highly skewed variables like population, electricity generation 
+add_log_transforms <- function(df) {
+  df %>%
+    mutate(
+      log_gdp = log(gdp + 1),
+      log_population = log(population + 1),
+      log_electricity = log(electricity_generation + 1)
+    )
+}
+
+# Check missing percentage
+na_percentage <- function(df) {
+  sapply(df, function(col) round(mean(is.na(col)) * 100, 2))
+}
+
+# Add energy ratios - gives a perspective of percentages
+add_energy_ratios <- function(df) {
+  df %>%
+    mutate(
+      fossil_to_renewable_ratio = fossil_electricity / (renewables_electricity + 1),
+      fossil_share_elec = fossil_electricity / (electricity_generation + 1),
+      solar_share = solar_electricity / (renewables_electricity + 1),
+      wind_share = wind_electricity / (renewables_electricity + 1),
+      hydro_share = hydro_electricity / (renewables_electricity + 1)
+    )
+}
+
+add_classification_flags <- function(df) {
+  df %>%
+    mutate(
+      high_renewable = if_else(renewables_share_elec > 50, 1, 0),
+      transitioning = if_else(renewables_share_elec > fossil_share_elec, 1, 0)
+    )
+}
+
+transform_energy_data <- function(df) {
+  df %>%
+    add_normalized_metrics() %>%
+    add_log_transforms() %>%
+    add_energy_ratios() %>%
+    add_classification_flags()
+}
+
+
+```
+
+### Load Dataset 2 - Electricity Generation Data
+
+```{r Loading and Processing Dataset 2}
+
+# Load and process
+energy_raw <- load_energy_data()
+#write_csv(energy_raw, "energy_raw.csv")
+cat("Number of rows in Raw Dataset :",  nrow(energy_raw),'\n')
+cat("Number of columns in Raw Dataset :", ncol(energy_raw),'\n')
+
+energy_clean <- filter_data(energy_raw)
+cat("Number of rows in Filtered Dataset :",  nrow(energy_clean),'\n')
+cat("Number of columns in Filtered Dataset :", ncol(energy_clean),'\n')
+
+energy_selected <- select_energy_columns(energy_clean)
+
+cat("Number of columns in Dataset after dropping unnecessary columns:", ncol(energy_selected),'\n')
+
+energy_transformed <- transform_energy_data(energy_selected)
+
+# Add continent info
+energy_transformed <- energy_transformed %>%
+  mutate(continent = countrycode(country, "country.name", "continent"))
+
+cat("Number of columns in Dataset after creating new columns and transformations:", ncol(energy_transformed),'\n')
+
+
+```
+
+### Check for Duplicates and Missing Values
+
+```{r Check Duplicates in dataset 2}
+### Checking for duplicated and % of missing values
+energy_transformed %>% filter(duplicated(.))
+
+### Checking for missing values
+print("Percentage of Missing Values left :")
+na_percentage(energy_transformed)
+#write_csv(energy_transformed, "energy_transformed.csv")
+
+```
+
+### Some latest stats about countries about renewable electricity
+
+```{r, warning=FALSE}
+
+# Filter for latest year
+latest_year <- max(energy_transformed$year, na.rm = TRUE)
+latest_data <- energy_transformed %>% filter(year == latest_year)
+
+# Get top countries for different metrics
+top_renewables <- latest_data %>% arrange(desc(renewables_electricity)) %>% slice(1)
+top_generation <- latest_data %>% arrange(desc(electricity_generation)) %>% slice(1)
+top_per_capita <- latest_data %>% arrange(desc(electricity_per_capita)) %>% slice(1)
+top_gdp <- latest_data %>% arrange(desc(gdp)) %>% slice(1)
+top_renew_share <- latest_data %>% arrange(desc(renewables_share_elec)) %>% slice(1)
+
+# Print the results
+cat(glue::glue("Year considered: {latest_year}\n"))
+cat(glue::glue(" Country with most renewable electricity: {top_renewables$country} ({round(top_renewables$renewables_electricity, 2)} TWh)\n"))
+cat(glue::glue(" Country with highest electricity generation: {top_generation$country} ({round(top_generation$electricity_generation, 2)} TWh)\n"))
+cat(glue::glue(" Country with highest GDP: {top_gdp$country} (${format(round(top_gdp$gdp, 0), big.mark=',')})\n"))
+cat(glue::glue(" Country with highest renewables share: {top_renew_share$country} ({round(top_renew_share$renewables_share_elec, 2)}%)\n"))
+```
+
+### Load CO2 and Clean Data - CO2 Emissions Dataset -1
+
+```{r dataset 1}
+co2_data <- read_csv("https://raw.githubusercontent.com/owid/co2-data/master/owid-co2-data.csv")
+#write_csv(co2_data, "co2_raw.csv")
+
+# Filter data for required years and missing values
+co2_data = filter_data(co2_data)
+
+# Select necessary columns
+co2_data = co2_data %>% select(-c(cement_co2,cement_co2_per_capita,co2_growth_abs,co2_growth_prct,co2_including_luc_growth_abs,co2_including_luc_growth_prct,cumulative_cement_co2,cumulative_co2_including_luc,cumulative_luc_co2,flaring_co2,flaring_co2_per_capita,cumulative_flaring_co2,share_global_flaring_co2,share_global_cumulative_flaring_co2))
+
+#CO₂ emissions year-over-year change
+co2_data = co2_data %>%
+  group_by(country) %>%
+  mutate(co2_pct_change = (co2 - lag(co2)) / lag(co2) * 100)
+
+#Total CO₂ from fossil fuel types 
+co2_data = co2_data %>%
+  mutate(fossil_fuel_co2 = coal_co2 + oil_co2 + gas_co2)
+
+#log gdp
+co2_data = co2_data %>% mutate(log_gdp = log(gdp))
+
+#log co2
+co2_data = co2_data %>% mutate(log_co2 = log(co2))
+
+# write to csv
+#write_csv(co2_transformed, "co2_transformed.csv")
+
+```
+
+### Merge Two Datasets to Single one - Using Country and Year as keys
+
+```{r Merging Data}
+
+co2_transformed <- co2_data
+
+# Repeated column names in both datasets
+co2_transformed <- co2_transformed %>%
+  select(-iso_code, -population, -gdp, -log_gdp)
+# 
+
+energy_co2_merged <- left_join(
+  energy_transformed,
+  co2_transformed,
+  by = c("country", "year")
+)
+
+
+# Variable creation after merging datasets
+get_co2_electricity_ratio <- function(df) {
+  df %>%
+    mutate(
+      co2_per_kwh = co2 / electricity_generation)
+}
+
+energy_co2_merged <- get_co2_electricity_ratio(energy_co2_merged)
+
+# Save dataset
+#write_csv(energy_co2_merged, "/Users/manasamangipudi/Desktop/Semester-3/DataWrangling/Project/data/energy_co2_data_merged.csv")
+
+```
+
+```{r Understanding merged data}
+head(energy_co2_merged)
+summary(energy_co2_merged)
+```
+
+# Exploratory Data Analysis
+
+## CO2 Dataset
+
+### CO2 Emissions vs Population - How GDP impacts it
+
+```{r}
+
+ggplot(energy_co2_merged %>% filter(year==2022), aes(x = population, y = co2, size = gdp, label = country)) +
+  geom_point(alpha = 0.6, color = "steelblue") +
+  geom_text_repel(max.overlaps = 5, size = 5) +
+  scale_x_log10(labels = scales::comma) +
+  scale_y_log10(labels = scales::comma) +
+  labs(
+    title = "Fossil Fuel CO2 Emissions vs Population (Bubble Size = GDP)",
+    x = "Population",
+    y = "CO2 Emissions (log scale)",
+    size = "GDP"
+  ) +
+  theme_minimal()
+
+```
+
+### CO2 Emissions of Global Super Powers
+
+```{r}
+
+
+ggplot(energy_co2_merged %>% filter(country %in% c("United States","India","China","Germany","Brazil")),aes(x=year,y=co2,color = country))+
+  geom_line(size=1)+
+  labs(title = "CO2 Emisions Over Time for Global Super Powers ",y="CO2 (Million Tonnes)")+
+  theme_minimal()
+
+
+```
+
+### Paris Agreement Effect on CO2 Emissions
+
+```{r}
+
+co2_change <- energy_co2_merged %>%
+  filter(year %in% c(2015, 2022)) %>%
+  select(country, year, co2,iso_code) %>%
+  pivot_wider(names_from = year, values_from = co2, names_prefix = "co2_") %>%
+  mutate(co2_diff_2015_2022 = co2_2022 - co2_2015)
+
+co2_change %>%
+  drop_na(co2_diff_2015_2022,iso_code) %>%
+  arrange(co2_diff_2015_2022) %>%
+  slice(1:15) %>%
+  ggplot(aes(x = reorder(country, co2_diff_2015_2022,decreasing = TRUE), y = co2_diff_2015_2022)) +
+  geom_col(fill = "steelblue") +
+  coord_flip() +
+  labs(
+    title = "Countries with Most Decrease in CO2 Emissions (2015–2022)",
+    x = "Country",
+    y = "Change in CO2 Emissions (Mt)"
+  ) +
+  theme_minimal()
+
+```
+
+## Electricity Generation Dataset :
+
+### Electricity Generation over Time by Continents
+
+```{r}
+
+ggplot(energy_co2_merged, aes(x = continent, y = electricity_generation)) +
+  geom_boxplot(fill = "steelblue") +
+  theme_minimal() +
+  labs(title = "Electricity by Continent")
+
+ggplot(energy_co2_merged, aes(x = continent, y = electricity_per_capita)) +
+  geom_boxplot(fill = "steelblue") +
+  theme_minimal() +
+  labs(title = "Electricity per Capita by Continent")
+
+```
+
+```{r}
+
+
+energy_co2_merged %>%
+  group_by(continent, year) %>%
+  summarise(
+    coal = sum(coal_share_elec, na.rm = TRUE),
+    gas = sum(gas_share_elec, na.rm = TRUE),
+    oil = sum(oil_share_elec, na.rm = TRUE)
+  ) %>%
+  pivot_longer(cols = c("coal", "gas","oil"), names_to = "source", values_to = "electricity") %>%
+  ggplot(aes(x = year, y = electricity, color = source)) +
+  geom_line(size = 1) +
+  facet_wrap(~continent, scales = "free_y") +
+  theme_minimal() +
+  labs(title = "Growth of Coal, Gas, Oil by Continent", y = "Electricity (TWh)")
+
+
+
+energy_co2_merged %>%
+  group_by(continent, year) %>%
+  summarise(
+    wind = sum(wind_share, na.rm = TRUE),
+    solar = sum(solar_share, na.rm = TRUE),
+    hydro = sum(hydro_share, na.rm = TRUE)
+  ) %>%
+  pivot_longer(cols = c("wind", "solar","hydro"), names_to = "source", values_to = "electricity") %>%
+  ggplot(aes(x = year, y = electricity, color = source)) +
+  geom_line(size = 1) +
+  facet_wrap(~continent, scales = "free_y") +
+  theme_minimal() +
+  labs(title = "Growth of Wind, Solar, Hydro by Continent", y = "Electricity (TWh)")
+
+
+```
+
+### Comparing Renewable and Fossil-fuel based Electricity Generation
+
+```{r}
+
+
+energy_by_continent <- energy_transformed %>%
+  group_by(continent, year) %>%
+  summarise(
+    renewables = sum(renewables_electricity, na.rm = TRUE),
+    fossil = sum(fossil_electricity, na.rm = TRUE)
+  ) %>%
+  pivot_longer(cols = c("renewables", "fossil"), names_to = "source", values_to = "electricity") %>%
+  ungroup()
+
+ggplot(energy_by_continent, aes(x = year, y = electricity, color = source)) +
+  geom_line(size = 1) +
+  facet_wrap(~continent, scales = "free_y") +
+  theme_minimal() +
+  labs(title = "Renewable vs Non-Renewable Electricity Generation by Continent Over Time")
+
+```
+
+### Electricity vs GDP for year 2022 - Size representing Fossil_and_Renewable Ratio
+
+```{r}
+
+
+ggplot(energy_co2_merged %>% filter(year==2022), aes(x = log_gdp, y = electricity_generation, size = fossil_to_renewable_ratio, label = country)) +
+  geom_point(alpha = 0.6, color = "steelblue") +
+  geom_text_repel(max.overlaps = 10, size = 5) +
+  scale_x_log10(labels = scales::comma) +
+  scale_y_log10(labels = scales::comma) +
+  theme_minimal()
+
+```
+
+### Linear Relationship between GDP and Electricity Generation
+
+# Merged Dataset - EDA
+
+### Global Trends of Electricity Generation and co2 emissions over time
+
+```{r}
+
+energy_co2_merged %>%
+  group_by(year) %>%
+  summarise(
+    fossil = mean(fossil_electricity, na.rm = TRUE),
+    co2 = mean(co2, na.rm = TRUE), 
+    renewable = mean(renewables_electricity, na.rm = TRUE)
+  ) %>%
+  pivot_longer(cols = c("fossil", "co2", "renewable"), names_to = "source", values_to = "share") %>%
+  ggplot(aes(x = year, y = share, color = source)) +
+  geom_line(size = 1.2) +
+  theme_minimal() +
+  labs(
+    title = "Global Trend of Electricity Generation and co2 over time",
+    x = "Year",
+    y = "Share of Electricity (%)",
+    color = "Source"
+  )
+
+
+
+```
+
+### Continent-wise Trends of Electricity Generation and co2 emissions over time
+
+```{r}
+library(tidyverse)
+
+energy_co2_merged %>%
+  group_by(continent, year) %>%
+  summarise(
+    co2 = mean(co2, na.rm = TRUE),
+    fossil = mean(fossil_electricity, na.rm = TRUE),
+    renew = mean(renewables_share_elec, na.rm = TRUE),
+    .groups = 'drop'
+  ) %>%
+  pivot_longer(cols = c(co2, fossil, renew), names_to = "variable", values_to = "value") %>%
+  ggplot(aes(x = year, y = value, color = variable)) +
+  geom_line(size = 1) +
+  facet_wrap(~continent, scales = "free_y") +
+  theme_minimal() +
+  labs(
+    title = "CO2 Emissions, Fossil and Renewable Electricity Trends by Continent",
+    x = "Year",
+    y = "Electricity Share/Emissions",
+    color = "Metric"
+  )
+
+```
+
+### Fossil Electricity and CO2 Emissions Linear Relationship
+
+```{r}
+energy_co2_merged %>%
+  group_by(continent, year) %>%
+  summarise(
+    fossil_elec = mean(fossil_electricity, na.rm = TRUE),
+    co2 = mean(co2, na.rm = TRUE),
+    .groups = "drop"
+  ) %>%
+  ggplot(aes(x = fossil_elec, y = co2)) +
+  geom_point(alpha = 0.6, color = "firebrick") +
+  geom_smooth(method = "lm", color = "black") +
+  facet_wrap(~continent, scales = "free") +
+  labs(
+    title = "Fossil Electricity vs CO2 Emissions by Continent",
+    x = "Fossil Electricity (TWh)",
+    y = "CO2 Emissions (Mt)"
+  ) +
+  theme_minimal()
+
+
+```
+
+### CO2 Emissions per unit of electricity generated over time
+
+```{r}
+
+energy_co2_merged %>%
+  mutate(co2_per_twh = co2 /electricity_generation) %>%
+  group_by(continent, year) %>%
+  summarise(
+    co2_efficiency = mean(co2_per_twh, na.rm = TRUE),
+    .groups = "drop"
+  ) %>%
+  ggplot(aes(x = year, y = co2_efficiency, color = continent)) +
+  geom_line(size = 1.2) +
+  labs(
+    title = "CO₂ Emissions per Unit of Electricity Generated",
+    y = "CO₂ / TWh",
+    x = "Year"
+  ) +
+  theme_minimal()
+
+```
+
+### GHG Emissions per unit of electricity generated over time
+
+```{r}
+
+
+energy_co2_merged %>%
+  mutate(ghg_per_twh = total_ghg /electricity_generation) %>%
+  group_by(continent, year) %>%
+  summarise(
+    ghg_efficiency = mean(ghg_per_twh, na.rm = TRUE),
+    .groups = "drop"
+  ) %>%
+  ggplot(aes(x = year, y = ghg_efficiency, color = continent)) +
+  geom_line(size = 1.2) +
+  labs(
+    title = "GHG Emissions per Unit of Electricity Generated",
+    y = "GHG / TWh",
+    x = "Year"
+  ) +
+  theme_minimal()
+
+```
+
+### Linear regression of CO2 against every other column sorted by estimate
+
+```{r}
+
+# 1. Filter for United States
+us_data <- energy_co2_merged %>%
+  filter(country == "United States") %>%
+  select(-country, -iso_code, -continent, year)  # Remove non-numeric/grouping vars
+
+# 2. Remove columns with all NA or zero variance
+us_data <- us_data %>%
+  select(where(is.numeric)) %>%
+  select(where(~ sum(!is.na(.)) > 0)) %>%
+  select(where(~ sd(., na.rm = TRUE) > 0))
+
+# 3. Build models and extract p-values
+results <- map_dfr(
+  setdiff(names(us_data), "co2"),
+  function(var) {
+    df <- us_data %>% select(co2, !!sym(var)) %>% drop_na()
+    if (nrow(df) < 10) return(NULL)  # skip if not enough data
+    model <- lm(co2 ~ ., data = df)
+    tidy(model) %>%
+      filter(term != "(Intercept)") %>%
+      mutate(variable = var)
+  }
+)
+
+# 4. Print significant predictors (p >= 0.05)
+significant <- results %>%
+  filter(p.value < 0.05) %>%
+  arrange(p.value)
+
+head(significant %>% arrange(desc(estimate)))
+
+```
+
+### Fossil Fuel vs CO2 Emissions in 2022 (By Population)
+
+```{r}
+
+
+library(ggrepel)
+ggplot(energy_co2_merged %>% filter(year==2022), aes(x = renewables_per_capita, y = co2, size = population, label = country)) +
+  geom_point(alpha = 0.6, color = "steelblue") +
+  geom_text_repel(max.overlaps = 5, size = 4) +
+  scale_x_log10() +
+  scale_y_log10(labels = scales::comma) +
+  labs(
+    title = "Renewable Elec vs Co2 Emissions (Bubble Size = Population)",
+    x = "Renewables_per_capita",
+    y = "CO2 Emissions (log scale)",
+    size = "Population"
+  ) +
+  theme_minimal()
+
+
+```
+
+```{r}
+
+# Global Scatter Plot: CO2 per Capita vs Renewables Share
+energy_co2_merged <- energy_co2_merged %>%
+  mutate(co2_per_capita = co2 / population)
+
+ggplot(energy_co2_merged, aes(x = renewables_share_elec, y = log(co2_per_capita))) +
+  geom_point(alpha = 0.4, color = "darkgreen") +
+  geom_smooth(method = "lm", color = "red") +
+  labs(
+    title = "Relationship between Renewable Electricity Share and CO2 Emissions per Capita",
+    x = "Renewables Share (%)",
+    y = "Log CO2 Emissions per Capita (tons)"
+  ) +
+  theme_minimal()
+
+
+
+```
+
+```{r}
+
+# Global Regression Model
+model_global <- lm(co2_per_capita ~ renewables_share_elec + gdp, data = energy_co2_merged)
+summary(model_global)
+
+
+
+```
+
+```{r}
+
+top5 <- c("Germany", "India", "Brazil", "United States", "China")
+
+energy_co2_merged %>%
+  filter(country %in% top5) %>%
+  ggplot(aes(x = year, y = co2 / population, color = country)) +
+  geom_line(size = 1) +
+  labs(
+    title = "CO2 Emissions per Capita Over Time (Top 5 Economies)",
+    y = "CO2 per Capita (tons)",
+    x = "Year"
+  ) +
+  theme_minimal()
+
+```
+
+```{r}
+
+top5 <- c("United States", "China", "India", "Germany", "Brazil")
+
+energy_co2_merged %>%
+  filter(country %in% top5) %>%
+  ggplot(aes(x = year, y = renewables_share_elec, color = country)) +
+  geom_line(size = 1) +
+  labs(
+    title = "Renewable Electricity Share Over Time (Top 5 Economies)",
+    y = "Renewables Share (%)",
+    x = "Year"
+  ) +
+  theme_minimal()
+
+
+```
+
+```{r}
+energy_co2_merged %>%
+  group_by(year) %>%
+  summarise(avg_co2_per_kwh = mean(co2 / electricity_generation, na.rm = TRUE)) %>%
+  ggplot(aes(x = year, y = avg_co2_per_kwh)) +
+  geom_line(color = "firebrick", size = 1.2) +
+  labs(
+    title = "Global Average CO2 Emissions per kWh Over Time",
+    x = "Year",
+    y = "CO2 per kWh"
+  ) +
+  theme_minimal()
+
+
+```
+
+```{r}
+energy_co2_merged %>%
+  filter(year == max(year)) %>%
+  mutate(co2_per_kwh = co2 / electricity_generation) %>%
+  ggplot(aes(x = renewables_share_elec, y = co2_per_kwh)) +
+  geom_point(alpha = 0.6, color = "steelblue") +
+  geom_smooth(method = "lm", se = FALSE, color = "red") +
+  labs(
+    title = "Renewables Share vs CO₂ per kWh (Latest Year)",
+    x = "Renewables Share (%)",
+    y = "CO₂ per kWh"
+  ) +
+  theme_minimal()
+
+
+```
+
+```{r}
+top5 <- c("United States", "China", "India", "Germany", "Brazil")
+
+energy_co2_merged %>%
+  filter(country %in% top5) %>%
+  mutate(co2_per_kwh = co2 / electricity_generation) %>%
+  filter(!is.na(co2_per_kwh), co2_per_kwh < 5) %>%  # Optional: filter extreme values
+  ggplot(aes(x = year, y = co2_per_kwh, color = country)) +
+  geom_line(size = 1.2) +
+  labs(
+    title = "CO2 Emissions per kWh Over Time (Top 5 Economies)",
+    x = "Year",
+    y = expression(CO[2]~"per kWh"),
+    color = "Country"
+  ) +
+  theme_minimal()
+
+```
+
+```{r}
+
+
+library(ggrepel)
+ggplot(energy_co2_merged %>% filter(year==2022), aes(x =renewables_share_elec , y = co2_per_kwh, size = population, label = country)) +
+  geom_point(alpha = 0.6, color = "steelblue") +
+  geom_text_repel(max.overlaps = 2, size = 4) +
+  scale_x_log10() +
+  scale_y_log10(labels = scales::comma) +
+  labs(
+    title = "Renewable Elec vs Co2 Emissions (Bubble Size = Population)",
+    x = "Renewables_per_capita",
+    y = "CO2 Emissions (log scale)",
+    size = "Population"
+  ) +
+  theme_minimal()
+
+```
+
