@@ -1,20 +1,11 @@
-library(tidyverse)
 
+# Load Raw Data from source
 load_energy_data <- function(url = "https://raw.githubusercontent.com/owid/energy-data/master/owid-energy-data.csv") {
   read_csv(url)
 }
 
-impute_energy_data <- function(df) {
-  df %>%
-    group_by(country) %>%
-    mutate(across(
-      where(is.numeric),
-      ~ coalesce(., mean(., na.rm = TRUE)) %>% replace_na(0)
-    )) %>%
-    ungroup()
-}
-
-filter_energy_data <- function(df) {
+# Filter out unnecessary data and high missing values
+filter_data <- function(df) {
   df %>%
     filter(!str_starts(iso_code, "OWID"), !is.na(country), !is.na(year)) %>%
     filter(year >= 2000) %>%
@@ -22,6 +13,7 @@ filter_energy_data <- function(df) {
     filter(!is.na(population), !is.na(gdp))
 }
 
+# Select only necessary columns
 select_energy_columns <- function(df) {
   df %>%
     select(
@@ -30,9 +22,10 @@ select_energy_columns <- function(df) {
       renewables_electricity, fossil_electricity,
       solar_electricity, wind_electricity, hydro_electricity,
       renewables_share_elec, coal_share_elec, gas_share_elec, oil_share_elec
-    ) 
+    )
 }
 
+# Add normalized metrics : based on population and GDP
 add_normalized_metrics <- function(df) {
   df %>%
     mutate(
@@ -44,15 +37,22 @@ add_normalized_metrics <- function(df) {
     )
 }
 
+# Log Transforms - Highly skewed variables like population, electricity generation 
 add_log_transforms <- function(df) {
   df %>%
     mutate(
-      log_gdp = log(gdp),
-      log_population = log(population),
-      log_electricity = log(electricity_generation+1)
+      log_gdp = log(gdp + 1),
+      log_population = log(population + 1),
+      log_electricity = log(electricity_generation + 1)
     )
 }
 
+# Check missing percentage
+na_percentage <- function(df) {
+  sapply(df, function(col) round(mean(is.na(col)) * 100, 2))
+}
+
+# Add energy ratios - gives a perspective of percentages
 add_energy_ratios <- function(df) {
   df %>%
     mutate(
@@ -81,6 +81,38 @@ transform_energy_data <- function(df) {
 }
 
 
-na_percentage <- function(df) {
-  sapply(df, function(col) round(mean(is.na(col)) * 100, 2))
-}
+```
+
+### Load Dataset 2 - Electricity Generation Data
+
+```{r Loading and Processing Dataset 2}
+
+# Load and process
+energy_raw <- load_energy_data()
+#write_csv(energy_raw, "energy_raw.csv")
+cat("Number of rows in Raw Dataset :",  nrow(energy_raw),'\n')
+cat("Number of columns in Raw Dataset :", ncol(energy_raw),'\n')
+
+energy_clean <- filter_data(energy_raw)
+cat("Number of rows in Filtered Dataset :",  nrow(energy_clean),'\n')
+cat("Number of columns in Filtered Dataset :", ncol(energy_clean),'\n')
+
+energy_selected <- select_energy_columns(energy_clean)
+
+cat("Number of columns in Dataset after dropping unnecessary columns:", ncol(energy_selected),'\n')
+
+energy_transformed <- transform_energy_data(energy_selected)
+
+# Add continent info
+energy_transformed <- energy_transformed %>%
+  mutate(continent = countrycode(country, "country.name", "continent"))
+
+cat("Number of columns in Dataset after creating new columns and transformations:", ncol(energy_transformed),'\n')
+
+### Checking for duplicated and % of missing values
+energy_transformed %>% filter(duplicated(.))
+
+### Checking for missing values
+print("Percentage of Missing Values left :")
+na_percentage(energy_transformed)
+#write_csv(energy_transformed, "energy_transformed.csv")
