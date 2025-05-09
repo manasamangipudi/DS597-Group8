@@ -166,10 +166,9 @@ cat(glue::glue(" Country with highest GDP: {top_gdp$country} (${format(round(top
 cat(glue::glue(" Country with highest renewables share: {top_renew_share$country} ({round(top_renew_share$renewables_share_elec, 2)}%)\n"))
 ```
 
-### Load CO2 and Clean Data - CO2 Emissions Dataset -1 
+### Load CO2 and Clean Data - CO2 Emissions Dataset -1
 
 ```{r}
-library(tidyverse)
 co2_data <- read_csv("https://raw.githubusercontent.com/owid/co2-data/master/owid-co2-data.csv")
 
 filter_co2_data <- function(df) {
@@ -216,12 +215,21 @@ energy_co2_merged <- left_join(
   by = c("country", "year")
 )
 
+
+get_co2_electricity_ratio <- function(df) {
+  df %>%
+    mutate(
+      co2_per_kwh = co2 / electricity_generation)
+}
+
+energy_co2_merged <- get_co2_electricity_ratio(energy_co2_merged)
+
 #write_csv(energy_co2_merged, "/Users/manasamangipudi/Desktop/Semester-3/DataWrangling/Project/data/energy_co2_data_merged.csv")
 
 ```
 
 ```{r}
-head(energy_co2_merged)
+energy_co2_merged
 ```
 
 # Exploratory Data Analysis
@@ -239,9 +247,9 @@ ggplot(energy_co2_merged %>% filter(year==2022), aes(x = population, y = co2, si
   scale_x_log10(labels = scales::comma) +
   scale_y_log10(labels = scales::comma) +
   labs(
-    title = "Fossil Fuel CO₂ Emissions vs Population (Bubble Size = GDP)",
+    title = "Fossil Fuel CO2 Emissions vs Population (Bubble Size = GDP)",
     x = "Population (log scale)",
-    y = "CO₂ Emissions (log scale)",
+    y = "CO2 Emissions (log scale)",
     size = "GDP"
   ) +
   theme_minimal()
@@ -253,7 +261,7 @@ ggplot(energy_co2_merged %>% filter(year==2022), aes(x = population, y = co2, si
 ```{r}
 
 
-ggplot(energy_co2_merged %>% filter(country %in% c("United States","India","China","Russia","Japan")),aes(x=year,y=co2,color = country))+
+ggplot(energy_co2_merged %>% filter(country %in% c("United States","India","China","Germany","Brazil")),aes(x=year,y=co2,color = country))+
   geom_line(size=1)+
   labs(title = "CO2 Emisions Over Time for Global Super Powers ",y="CO2 (Million Tonnes)")+
   theme_minimal()
@@ -261,7 +269,7 @@ ggplot(energy_co2_merged %>% filter(country %in% c("United States","India","Chin
 
 ```
 
-### Paris Agreement Effect on CO2 Emissions 
+### Paris Agreement Effect on CO2 Emissions
 
 ```{r}
 
@@ -279,37 +287,33 @@ co2_change %>%
   geom_col(fill = "steelblue") +
   coord_flip() +
   labs(
-    title = "Countries with Most Decrease in CO₂ Emissions (2015–2022)",
+    title = "Countries with Most Decrease in CO2 Emissions (2015–2022)",
     x = "Country",
-    y = "Change in CO₂ Emissions (Mt)"
+    y = "Change in CO2 Emissions (Mt)"
   ) +
   theme_minimal()
 
 ```
 
-### CO2 Emissions vs GDP
-
-```{r}
-
-
-ggplot(energy_co2_merged, aes(x = gdp, y = co2)) +
-  geom_point(alpha = 0.5) +
-  geom_smooth(method = "lm", color = "red", se = FALSE) +
-  theme_minimal() +
-  labs(title = "GDP vs CO2 Emissions")
-
-```
-
-## Electricity Generation Dataset : 
+## Electricity Generation Dataset :
 
 ### Electricity Generation over Time by Continents
 
 ```{r}
 
+ggplot(energy_co2_merged, aes(x = continent, y = electricity_generation)) +
+  geom_boxplot(fill = "steelblue") +
+  theme_minimal() +
+  labs(title = "Electricity by Continent")
+
 ggplot(energy_co2_merged, aes(x = continent, y = electricity_per_capita)) +
   geom_boxplot(fill = "steelblue") +
   theme_minimal() +
   labs(title = "Electricity per Capita by Continent")
+
+```
+
+```{r}
 
 
 energy_co2_merged %>%
@@ -342,7 +346,9 @@ energy_co2_merged %>%
   theme_minimal() +
   labs(title = "Growth of Wind, Solar, Hydro by Continent", y = "Electricity (TWh)")
 
+
 ```
+
 ### Comparing Renewable and Fossil-fuel based Electricity Generation
 
 ```{r}
@@ -367,11 +373,8 @@ ggplot(energy_by_continent, aes(x = year, y = electricity, color = source)) +
 
 ### Electricity vs GDP for year 2022 - Size representing Fossil_and_Renewable Ratio
 
-
 ```{r}
 
-
-library(ggplot2)
 
 ggplot(energy_co2_merged %>% filter(year==2022), aes(x = log_gdp, y = electricity_generation, size = fossil_to_renewable_ratio, label = country)) +
   geom_point(alpha = 0.6, color = "steelblue") +
@@ -383,17 +386,6 @@ ggplot(energy_co2_merged %>% filter(year==2022), aes(x = log_gdp, y = electricit
 ```
 
 ### Linear Relationship between GDP and Electricity Generation
-
-```{r}
-
-
-ggplot(energy_co2_merged, aes(y = gdp, x = electricity_generation)) +
-  geom_point(alpha = 0.5) +
-  geom_smooth(method = "lm", color = "red", se = FALSE) +
-  theme_minimal() +
-  labs(title = "GDP vs Electricity Generation")
-
-```
 
 # Merged Dataset - EDA
 
@@ -413,7 +405,7 @@ energy_co2_merged %>%
   geom_line(size = 1.2) +
   theme_minimal() +
   labs(
-    title = "Global Trend of Fossil and co2 over time",
+    title = "Global Trend of Electricity Generation and co2 over time",
     x = "Year",
     y = "Share of Electricity (%)",
     color = "Source"
@@ -442,7 +434,7 @@ energy_co2_merged %>%
   facet_wrap(~continent, scales = "free_y") +
   theme_minimal() +
   labs(
-    title = "CO₂ Emissions, Fossil and Renewable Electricity Trends by Continent",
+    title = "CO2 Emissions, Fossil and Renewable Electricity Trends by Continent",
     x = "Year",
     y = "Electricity Share/Emissions",
     color = "Metric"
@@ -465,9 +457,9 @@ energy_co2_merged %>%
   geom_smooth(method = "lm", color = "black") +
   facet_wrap(~continent, scales = "free") +
   labs(
-    title = "Fossil Electricity vs CO₂ Emissions by Continent",
+    title = "Fossil Electricity vs CO2 Emissions by Continent",
     x = "Fossil Electricity (TWh)",
-    y = "CO₂ Emissions (Mt)"
+    y = "CO2 Emissions (Mt)"
   ) +
   theme_minimal()
 
@@ -495,6 +487,7 @@ energy_co2_merged %>%
   theme_minimal()
 
 ```
+
 ### GHG Emissions per unit of electricity generated over time
 
 ```{r}
@@ -519,7 +512,6 @@ energy_co2_merged %>%
 ```
 
 ### Linear regression of CO2 against every other column sorted by estimate
-
 
 ```{r}
 
@@ -568,10 +560,108 @@ ggplot(energy_co2_merged %>% filter(year==2022), aes(x = renewables_per_capita, 
   scale_x_log10(labels = scales::comma) +
   scale_y_log10(labels = scales::comma) +
   labs(
-    title = "Fossil Fuel CO₂ Emissions vs Population (Bubble Size = Population)",
+    title = "Fossil Fuel CO2 Emissions vs Population (Bubble Size = Population)",
     x = "Renewables_per_capita",
-    y = "CO₂ Emissions (log scale)",
+    y = "CO2 Emissions (log scale)",
     size = "Population"
+  ) +
+  theme_minimal()
+
+
+```
+
+```{r}
+
+# Global Scatter Plot: CO2 per Capita vs Renewables Share
+energy_co2_merged <- energy_co2_merged %>%
+  mutate(co2_per_capita = co2 / population)
+
+ggplot(energy_co2_merged, aes(x = renewables_share_elec, y = log(co2_per_capita))) +
+  geom_point(alpha = 0.4, color = "darkgreen") +
+  geom_smooth(method = "lm", color = "red") +
+  labs(
+    title = "Relationship between Renewable Electricity Share and CO2 Emissions per Capita",
+    x = "Renewables Share (%)",
+    y = "Log CO2 Emissions per Capita (tons)"
+  ) +
+  theme_minimal()
+
+
+
+```
+
+```{r}
+
+# Global Regression Model
+model_global <- lm(co2_per_capita ~ renewables_share_elec + gdp, data = energy_co2_merged)
+summary(model_global)
+
+
+
+```
+
+```{r}
+
+top5 <- c("Germany", "India", "Brazil", "United States", "China")
+
+energy_co2_merged %>%
+  filter(country %in% top5) %>%
+  ggplot(aes(x = year, y = co2 / population, color = country)) +
+  geom_line(size = 1) +
+  labs(
+    title = "CO2 Emissions per Capita Over Time (Top 5 Economies)",
+    y = "CO2 per Capita (tons)",
+    x = "Year"
+  ) +
+  theme_minimal()
+
+```
+
+```{r}
+
+top5 <- c("United States", "China", "India", "Germany", "Brazil")
+
+energy_co2_merged %>%
+  filter(country %in% top5) %>%
+  ggplot(aes(x = year, y = renewables_share_elec, color = country)) +
+  geom_line(size = 1) +
+  labs(
+    title = "Renewable Electricity Share Over Time (Top 5 Economies)",
+    y = "Renewables Share (%)",
+    x = "Year"
+  ) +
+  theme_minimal()
+
+
+```
+
+```{r}
+energy_co2_merged %>%
+  group_by(year) %>%
+  summarise(avg_co2_per_kwh = mean(co2 / electricity_generation, na.rm = TRUE)) %>%
+  ggplot(aes(x = year, y = avg_co2_per_kwh)) +
+  geom_line(color = "firebrick", size = 1.2) +
+  labs(
+    title = "Global Average CO2 Emissions per kWh Over Time",
+    x = "Year",
+    y = "CO2 per kWh"
+  ) +
+  theme_minimal()
+
+
+```
+
+```{r}
+energy_co2_merged %>%
+  filter(year == max(year)) %>%
+  mutate(co2_per_kwh = co2 / electricity_generation) %>%
+  ggplot(aes(x = renewables_share_elec, y = co2_per_kwh)) +
+  geom_point(alpha = 0.6, color = "steelblue") +
+  geom_smooth(method = "lm", se = FALSE, color = "red") +
+  labs(
+    title = "Renewables Share vs CO₂ per kWh (Latest Year)",
+    x = "Renewables Share (%)",
+    y = "CO₂ per kWh"
   ) +
   theme_minimal()
 
