@@ -400,3 +400,17 @@ CO2 Regressed on every other column:
 ![![](images/clipboard-1495074318.png)](images/clipboard-105774062.png)
 
 ![](images/clipboard-879696398.png)
+
+## Appendix G: File Structure
+
+-   **`data/`** – Contains both raw and cleaned datasets.
+
+    -   `raw/` - raw dataset
+
+    -   `cleaned/` - cleaned dataset
+
+-   **`functions/`** – Stores scripts for data cleaning, transformation, and merging.
+
+-   **`results/`** – Includes final processed data, visualizations, appedix and summary reports.
+
+-   **`Main.rmd`** – A well-documented rmd file handling data download, cleaning, transformation, graph visualizations, and EDA.
